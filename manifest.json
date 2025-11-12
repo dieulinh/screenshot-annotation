@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Screenshot Annotator",
+  "version": "1.0",
+  "description": "Take screenshots and annotate them with arrows, text, and highlights. Save to organized folders.",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "downloads",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png"
+  }
+}

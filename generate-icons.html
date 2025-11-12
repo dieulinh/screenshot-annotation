@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; padding: 20px; background: #f0f0f0; }
+    canvas { border: 1px solid #ccc; margin: 10px; background: white; }
+    button { margin: 10px; padding: 10px 20px; }
+  </style>
+</head>
+<body>
+  <h1>Generate Icons</h1>
+  <canvas id="canvas16" width="16" height="16"></canvas>
+  <canvas id="canvas48" width="48" height="48"></canvas>
+  <canvas id="canvas128" width="128" height="128"></canvas>
+  <br>
+  <button onclick="downloadIcon('canvas16', 'icon16.png')">Download 16x16</button>
+  <button onclick="downloadIcon('canvas48', 'icon48.png')">Download 48x48</button>
+  <button onclick="downloadIcon('canvas128', 'icon128.png')">Download 128x128</button>
+
+  <script>
+    function drawIcon(canvasId, size) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // Purple gradient background
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#667eea');
+      gradient.addColorStop(1, '#764ba2');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      
+      // Camera icon (simplified)
+      ctx.fillStyle = 'white';
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = size * 0.08;
+      
+      // Camera body
+      ctx.strokeRect(size * 0.2, size * 0.3, size * 0.6, size * 0.45);
+      
+      // Lens
+      ctx.beginPath();
+      ctx.arc(size * 0.5, size * 0.52, size * 0.15, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // Flash
+      ctx.fillRect(size * 0.65, size * 0.2, size * 0.1, size * 0.1);
+    }
+    
+    function downloadIcon(canvasId, filename) {
+      const canvas = document.getElementById(canvasId);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+    
+    // Draw all icons
+    drawIcon('canvas16', 16);
+    drawIcon('canvas48', 48);
+    drawIcon('canvas128', 128);
+  </script>
+</body>
+</html>
