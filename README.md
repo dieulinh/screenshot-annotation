@@ -13,10 +13,12 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 - **Text** - Add custom text labels
 - **Highlights** - Highlight areas with transparent color
 - **Rectangles** - Draw boxes around content
+- **Blur/Pixelate** - Hide sensitive information (passwords, emails, personal data)
 
 ⚙️ **Customization**
 - Choose annotation colors
 - Adjust line width (1-10px)
+- Blur intensity selector (Light, Medium, Strong, Maximum)
 - Undo last annotation
 - Clear all annotations
 
@@ -44,10 +46,11 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
    - Current visible tab will be captured
 
 2. **Annotate**
-   - Select a tool (Arrow, Text, Highlight, or Rectangle)
-   - Choose color and line width
+   - Select a tool (Arrow, Text, Highlight, Rectangle, or Blur)
+   - Choose color and line width (or blur intensity for blur tool)
    - Draw on the screenshot
    - For text: click where you want text, enter in prompt
+   - For blur: drag to select area containing sensitive data
 
 3. **Save**
    - Enter folder name (e.g., "bug-reports", "tutorials")
@@ -57,6 +60,8 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 
 ## Tips
 
+- **Hide sensitive data**: Use the blur tool to pixelate passwords, emails, credit cards, or personal information
+- **Blur intensity**: Light blur for slight obfuscation, Maximum blur for complete privacy
 - **Undo mistakes**: Use the Undo button (↶)
 - **Start over**: Use Clear All button (🗑️)
 - **Default folder**: Your last used folder name is remembered
@@ -69,6 +74,7 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 - `A` - Arrow tool
 - `T` - Text tool
 - `H` - Highlight tool
+- `B` - Blur tool
 
 ## Permissions
 
@@ -98,10 +104,10 @@ screenshot-annotator/
 - Keyboard shortcuts
 - Circle/ellipse tool
 - Free-hand drawing
-- Blur tool for sensitive data
 - Copy to clipboard
 - Multiple pages/area selection
 - Export as PDF
+- Black bar censoring option
 
 ## License
 

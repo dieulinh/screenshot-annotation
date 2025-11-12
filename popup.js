@@ -12,8 +12,10 @@ const arrowTool = document.getElementById('arrowTool');
 const textTool = document.getElementById('textTool');
 const highlightTool = document.getElementById('highlightTool');
 const rectangleTool = document.getElementById('rectangleTool');
+const blurTool = document.getElementById('blurTool');
 const colorPicker = document.getElementById('colorPicker');
 const lineWidth = document.getElementById('lineWidth');
+const blurIntensity = document.getElementById('blurIntensity');
 const undoBtn = document.getElementById('undoBtn');
 const clearBtn = document.getElementById('clearBtn');
 const saveBtn = document.getElementById('saveBtn');
@@ -62,11 +64,22 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, textTool, highlightTool, rectangleTool].forEach(btn => {
+[arrowTool, textTool, highlightTool, rectangleTool, blurTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentTool = btn.id.replace('Tool', '');
+    
+    // Show/hide blur intensity selector
+    if (currentTool === 'blur') {
+      blurIntensity.classList.remove('hidden');
+      colorPicker.classList.add('hidden');
+      lineWidth.classList.add('hidden');
+    } else {
+      blurIntensity.classList.add('hidden');
+      colorPicker.classList.remove('hidden');
+      lineWidth.classList.remove('hidden');
+    }
   });
 });
 
@@ -93,6 +106,7 @@ function startDrawing(e) {
     tool: currentTool,
     color: colorPicker.value,
     lineWidth: parseInt(lineWidth.value),
+    blurIntensity: parseInt(blurIntensity.value),
     startX,
     startY
   };
@@ -162,6 +176,15 @@ function drawAnnotation(annotation) {
         annotation.endY - annotation.startY
       );
       break;
+    case 'blur':
+      applyPixelatedBlur(
+        annotation.startX,
+        annotation.startY,
+        annotation.endX,
+        annotation.endY,
+        annotation.blurIntensity
+      );
+      break;
     case 'text':
       ctx.font = `${annotation.lineWidth * 8}px Arial`;
       ctx.fillText(annotation.text, annotation.startX, annotation.startY);
@@ -194,6 +217,56 @@ function drawArrow(fromX, fromY, toX, toY) {
   ctx.stroke();
 }
 
+function applyPixelatedBlur(x1, y1, x2, y2, pixelSize) {
+  // Normalize coordinates
+  const startX = Math.min(x1, x2);
+  const startY = Math.min(y1, y2);
+  const width = Math.abs(x2 - x1);
+  const height = Math.abs(y2 - y1);
+  
+  if (width < 1 || height < 1) return;
+  
+  // Get the image data for the selected area
+  const imageData = ctx.getImageData(startX, startY, width, height);
+  const data = imageData.data;
+  
+  // Apply pixelation effect
+  for (let y = 0; y < height; y += pixelSize) {
+    for (let x = 0; x < width; x += pixelSize) {
+      // Calculate average color for this pixel block
+      let r = 0, g = 0, b = 0, count = 0;
+      
+      for (let py = 0; py < pixelSize && y + py < height; py++) {
+        for (let px = 0; px < pixelSize && x + px < width; px++) {
+          const i = ((y + py) * width + (x + px)) * 4;
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+          count++;
+        }
+      }
+      
+      // Calculate average
+      r = Math.floor(r / count);
+      g = Math.floor(g / count);
+      b = Math.floor(b / count);
+      
+      // Apply average color to entire block
+      for (let py = 0; py < pixelSize && y + py < height; py++) {
+        for (let px = 0; px < pixelSize && x + px < width; px++) {
+          const i = ((y + py) * width + (x + px)) * 4;
+          data[i] = r;
+          data[i + 1] = g;
+          data[i + 2] = b;
+        }
+      }
+    }
+  }
+  
+  // Put the blurred image data back
+  ctx.putImageData(imageData, startX, startY);
+}
+
 function addTextAnnotation(x, y) {
   const text = prompt('Enter text:');
   if (text && text.trim()) {
@@ -201,6 +274,7 @@ function addTextAnnotation(x, y) {
       tool: 'text',
       color: colorPicker.value,
       lineWidth: parseInt(lineWidth.value),
+      blurIntensity: parseInt(blurIntensity.value),
       startX: x,
       startY: y,
       text: text

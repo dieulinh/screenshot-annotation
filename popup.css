@@ -135,6 +135,21 @@ h2 {
   font-size: 14px;
 }
 
+.blur-intensity {
+  height: 36px;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.blur-intensity.hidden {
+  display: none;
+}
+
 .canvas-container {
   border: 2px solid #dee2e6;
   border-radius: 8px;
