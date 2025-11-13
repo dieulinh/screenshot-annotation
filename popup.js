@@ -546,6 +546,51 @@ function applyFilterEffect(x1, y1, x2, y2, effect = 'grayscale') {
         b = b * (1 - blend) + target.b * blend;
         break;
       }
+      case 'neutralEnhancement': {
+        const baseHsl = rgbToHsl(r, g, b);
+        const tunedS = clamp01(baseHsl.s * 1.08 + 0.015);
+        const tunedL = clamp01((baseHsl.l - 0.5) * 1.05 + 0.5);
+        const tuned = hslToRgb(baseHsl.h, tunedS, tunedL);
+        r = tuned.r;
+        g = tuned.g;
+        b = tuned.b;
+        break;
+      }
+      case 'vibrantContrast': {
+        const baseHsl = rgbToHsl(r, g, b);
+        const boostedS = clamp01(baseHsl.s * 1.25 + 0.05);
+        const contrastL = clamp01((baseHsl.l - 0.5) * 1.18 + 0.5);
+        const highlightL = clamp01(contrastL + 0.04);
+        const body = hslToRgb(baseHsl.h, boostedS, contrastL);
+        const highlight = hslToRgb(baseHsl.h, boostedS * 0.9, highlightL);
+        const mix = 0.3;
+        r = body.r * (1 - mix) + highlight.r * mix;
+        g = body.g * (1 - mix) + highlight.g * mix;
+        b = body.b * (1 - mix) + highlight.b * mix;
+        break;
+      }
+      case 'moodyShadows': {
+        const baseHsl = rgbToHsl(r, g, b);
+        const cooledHue = (baseHsl.h + 0.95) % 1;
+        const mutedSat = clamp01(baseHsl.s * 0.68 + 0.015);
+        const deepLight = clamp01(baseHsl.l * 0.72 + 0.04);
+        const toned = hslToRgb(cooledHue, mutedSat, deepLight);
+        r = clampChannel(toned.r - 6);
+        g = clampChannel(toned.g - 2);
+        b = clampChannel(toned.b + 10);
+        break;
+      }
+      case 'dramaticTones': {
+        const baseHsl = rgbToHsl(r, g, b);
+        const boostedSat = clamp01(baseHsl.s * 1.18 + 0.04);
+        const contrastLight = clamp01((baseHsl.l - 0.5) * 1.35 + 0.48);
+        const warmHighlights = hslToRgb((baseHsl.h + 0.02) % 1, boostedSat, clamp01(contrastLight + 0.05));
+        const coolShadows = hslToRgb((baseHsl.h + 0.88) % 1, clamp01(baseHsl.s * 0.75 + 0.02), clamp01(contrastLight * 0.65));
+        r = clampChannel(warmHighlights.r * 0.6 + coolShadows.r * 0.4 + 8);
+        g = clampChannel(warmHighlights.g * 0.6 + coolShadows.g * 0.4 + 2);
+        b = clampChannel(warmHighlights.b * 0.6 + coolShadows.b * 0.4 + 4);
+        break;
+      }
       case 'lrWarm': {
         const { h, s, l } = rgbToHsl(r, g, b);
         const warmHue = (h + 0.015) % 1;
@@ -580,6 +625,30 @@ function applyFilterEffect(x1, y1, x2, y2, effect = 'grayscale') {
         b = toned.b * (1 - matteBlend) + 210 * matteBlend;
         break;
       }
+      case 'warmVintage': {
+        const baseHsl = rgbToHsl(r, g, b);
+        const warmHue = (baseHsl.h + 0.02) % 1;
+        const softenedSat = clamp01(baseHsl.s * 0.85 + 0.02);
+        const fadedLight = clamp01(0.1 + baseHsl.l * 0.9);
+        const warmed = hslToRgb(warmHue, softenedSat, fadedLight);
+        r = clampChannel(warmed.r + 12);
+        g = clampChannel(warmed.g + 4);
+        b = clampChannel(warmed.b - 10);
+        break;
+      }
+      case 'dreamyGlow': {
+        const baseHsl = rgbToHsl(r, g, b);
+        const softSat = clamp01(baseHsl.s * 0.7 + 0.05);
+        const liftedLight = clamp01(baseHsl.l * 1.12 + 0.04);
+        const glowHue = (baseHsl.h + 0.01) % 1;
+        const glowBase = hslToRgb(glowHue, softSat, liftedLight);
+        const haze = 235;
+        const blend = 0.25;
+        r = clampChannel(glowBase.r * (1 - blend) + haze * blend);
+        g = clampChannel(glowBase.g * (1 - blend) + (haze - 8) * blend);
+        b = clampChannel(glowBase.b * (1 - blend) + (haze + 12) * blend);
+        break;
+      }
       case 'clarendon': {
         const { h, s, l } = rgbToHsl(r, g, b);
         const contrastL = clamp01((l - 0.5) * 1.25 + 0.5);
@@ -594,6 +663,14 @@ function applyFilterEffect(x1, y1, x2, y2, effect = 'grayscale') {
         r = toned.r * (1 - blend) + highlightRgb.r * blend + 6;
         g = toned.g * (1 - blend) + highlightRgb.g * blend + 2;
         b = toned.b * (1 - blend) + highlightRgb.b * blend + 10;
+        break;
+      }
+      case 'mono': {
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        const contrasted = clampChannel((gray - 128) * 1.1 + 128);
+        r = contrasted;
+        g = contrasted;
+        b = contrasted;
         break;
       }
       case 'grayscale':
