@@ -17,6 +17,9 @@ let textInputOverlay = null;
 let textInputField = null;
 let textInputMode = null;
 let textOverlayScrollHandler = null;
+let isDraggingImage = false;
+let draggedImageAnnotation = null;
+let dragOffset = { x: 0, y: 0 };
 
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
@@ -50,6 +53,8 @@ const cancelBtn = document.getElementById('cancelBtn');
 const editorSection = document.getElementById('editorSection');
 const folderNameInput = document.getElementById('folderName');
 const fileNameInput = document.getElementById('fileName');
+
+document.addEventListener('paste', handlePasteFromClipboard);
 
 // Capture screenshot
 captureBtn.addEventListener('click', () => {
@@ -150,6 +155,8 @@ function handleMouseLeave(e) {
     onCropMouseUp(e);
   } else if (isFilterMode && filterSelecting) {
     finalizeFilterSelection(e);
+  } else if (isDraggingImage && draggedImageAnnotation) {
+    finalizeImageDrag();
   } else if (isDrawing) {
     // Finish the annotation when mouse leaves
     stopDrawing(e);
@@ -157,6 +164,10 @@ function handleMouseLeave(e) {
 }
 
 function startDrawing(e) {
+  if (e.button !== 0) {
+    return;
+  }
+
   if (isCropMode) {
     onCropMouseDown(e);
     return;
@@ -170,6 +181,10 @@ function startDrawing(e) {
   const rect = canvas.getBoundingClientRect();
   startX = e.clientX - rect.left;
   startY = e.clientY - rect.top;
+
+  if (tryBeginImageDrag(startX, startY)) {
+    return;
+  }
   
   if (currentTool === 'text' || currentTool === 'heading') {
     showTextInputOverlay(startX, startY);
@@ -202,12 +217,16 @@ function draw(e) {
     updateFilterSelection(e);
     return;
   }
-  
-  if (!isDrawing) return;
-  
   const rect = canvas.getBoundingClientRect();
   const currentX = e.clientX - rect.left;
   const currentY = e.clientY - rect.top;
+
+  if (isDraggingImage && draggedImageAnnotation) {
+    updateDraggedImagePosition(currentX, currentY);
+    return;
+  }
+
+  if (!isDrawing) return;
 
   if (currentAnnotation?.tool === 'marker') {
     currentAnnotation.points.push({ x: currentX, y: currentY });
@@ -235,6 +254,11 @@ function stopDrawing(e) {
 
   if (isFilterMode && currentTool === 'filter') {
     finalizeFilterSelection(e);
+    return;
+  }
+
+  if (isDraggingImage && draggedImageAnnotation) {
+    finalizeImageDrag();
     return;
   }
   
@@ -358,6 +382,9 @@ function drawAnnotation(annotation) {
         annotation.blurIntensity
       );
       break;
+    case 'image':
+      drawImageAnnotation(annotation);
+      break;
     case 'heading': {
       const size = annotation.fontSize || 32;
       const weight = annotation.fontWeight || '700';
@@ -411,6 +438,42 @@ function drawLine(fromX, fromY, toX, toY) {
   ctx.moveTo(fromX, fromY);
   ctx.lineTo(toX, toY);
   ctx.stroke();
+}
+
+function drawImageAnnotation(annotation) {
+  if (!annotation) {
+    return;
+  }
+
+  if (!annotation.imageElement && annotation.imageSrc) {
+    const image = new Image();
+    image.onload = () => {
+      annotation.imageElement = image;
+      redrawCanvas();
+    };
+    image.src = annotation.imageSrc;
+    annotation.imageElement = image;
+  }
+
+  const image = annotation.imageElement;
+  if (!image || !image.complete) {
+    return;
+  }
+
+  ctx.drawImage(image, annotation.x, annotation.y, annotation.width, annotation.height);
+
+  if (annotation === draggedImageAnnotation && isDraggingImage) {
+    drawImageOutline(annotation, '#667eea');
+  }
+}
+
+function drawImageOutline(annotation, color) {
+  ctx.save();
+  ctx.strokeStyle = color || '#667eea';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(annotation.x, annotation.y, annotation.width, annotation.height);
+  ctx.restore();
 }
 
 function applyPixelatedBlur(x1, y1, x2, y2, pixelSize) {
@@ -839,6 +902,158 @@ function headingSizeToPixels(level) {
     default:
       return 32;
   }
+}
+
+function handlePasteFromClipboard(event) {
+  if (!canvas || !ctx) {
+    return;
+  }
+
+  const clipboardData = event.clipboardData || window.clipboardData;
+  if (!clipboardData || !clipboardData.items) {
+    return;
+  }
+
+  for (let i = 0; i < clipboardData.items.length; i++) {
+    const item = clipboardData.items[i];
+    if (!item || !item.type || !item.type.startsWith('image/')) {
+      continue;
+    }
+
+    const file = item.getAsFile();
+    if (!file) {
+      continue;
+    }
+
+    event.preventDefault();
+
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+      const dataUrl = loadEvent.target?.result;
+      if (typeof dataUrl === 'string') {
+        insertClipboardImage(dataUrl);
+      }
+    };
+    reader.readAsDataURL(file);
+    break;
+  }
+}
+
+function insertClipboardImage(dataUrl) {
+  if (!canvas || !ctx || !dataUrl) {
+    return;
+  }
+
+  const image = new Image();
+  image.onload = () => {
+    const annotation = buildImageAnnotation(image, dataUrl);
+    annotations.push(annotation);
+    draggedImageAnnotation = annotation;
+    isDraggingImage = false;
+    redrawCanvas();
+  };
+  image.onerror = () => {
+    console.error('Unable to load pasted image');
+  };
+  image.src = dataUrl;
+}
+
+function buildImageAnnotation(image, dataUrl) {
+  const maxWidth = Math.max(40, canvas.width * 0.6);
+  const maxHeight = Math.max(40, canvas.height * 0.6);
+  const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
+  const width = Math.max(40, Math.round(image.width * scale));
+  const height = Math.max(40, Math.round(image.height * scale));
+
+  const defaultX = Math.round((canvas.width - width) / 2);
+  const defaultY = Math.round((canvas.height - height) / 2);
+
+  return {
+    tool: 'image',
+    imageElement: image,
+    imageSrc: dataUrl,
+    width,
+    height,
+    x: defaultX,
+    y: defaultY
+  };
+}
+
+function tryBeginImageDrag(x, y) {
+  if (isCropMode || (isFilterMode && currentTool === 'filter')) {
+    return false;
+  }
+
+  const hitResult = findTopmostImageAt(x, y);
+  if (!hitResult) {
+    return false;
+  }
+
+  const { annotation, index } = hitResult;
+  draggedImageAnnotation = annotation;
+  dragOffset.x = x - annotation.x;
+  dragOffset.y = y - annotation.y;
+  isDraggingImage = true;
+
+  if (index !== annotations.length - 1) {
+    annotations.splice(index, 1);
+    annotations.push(annotation);
+  }
+
+  redrawCanvas();
+  return true;
+}
+
+function findTopmostImageAt(x, y) {
+  for (let i = annotations.length - 1; i >= 0; i--) {
+    const annotation = annotations[i];
+    if (annotation?.tool !== 'image') {
+      continue;
+    }
+
+    if (pointInsideImage(annotation, x, y)) {
+      return { annotation, index: i };
+    }
+  }
+  return null;
+}
+
+function pointInsideImage(annotation, x, y) {
+  const withinX = x >= annotation.x && x <= annotation.x + annotation.width;
+  const withinY = y >= annotation.y && y <= annotation.y + annotation.height;
+  return withinX && withinY;
+}
+
+function updateDraggedImagePosition(cursorX, cursorY) {
+  if (!draggedImageAnnotation) {
+    return;
+  }
+
+  const targetX = cursorX - dragOffset.x;
+  const targetY = cursorY - dragOffset.y;
+  const { x, y } = clampImagePosition(targetX, targetY, draggedImageAnnotation.width, draggedImageAnnotation.height);
+  draggedImageAnnotation.x = x;
+  draggedImageAnnotation.y = y;
+  redrawCanvas();
+}
+
+function clampImagePosition(x, y, width, height) {
+  if (!canvas) {
+    return { x, y };
+  }
+  const maxX = Math.max(0, canvas.width - width);
+  const maxY = Math.max(0, canvas.height - height);
+  return {
+    x: Math.min(Math.max(x, 0), maxX),
+    y: Math.min(Math.max(y, 0), maxY)
+  };
+}
+
+function finalizeImageDrag() {
+  isDraggingImage = false;
+  draggedImageAnnotation = null;
+  dragOffset = { x: 0, y: 0 };
+  redrawCanvas();
 }
 
 function redrawCanvas() {
