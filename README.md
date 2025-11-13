@@ -11,7 +11,7 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 🎨 **Annotation Tools**
 - **Arrows** - Point out important details
 - **Text** - Add custom text labels
-- **Highlights** - Highlight areas with transparent color
+- **Highlights & Marker** - Highlight areas with transparent color or freehand marker strokes — ~~Black bar censoring option~~
 - **Rectangles** - Draw boxes around content
 - **Blur/Pixelate** - Hide sensitive information (passwords, emails, personal data)
 - **Crop** - Select and crop to a specific area of the screenshot
@@ -115,7 +115,6 @@ screenshot-annotator/
 - Copy to clipboard
 - Multiple screenshots/comparison view
 - Export as PDF
-- Black bar censoring option
 - Rotate image
 
 ## License
