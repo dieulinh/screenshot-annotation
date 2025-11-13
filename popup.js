@@ -21,6 +21,7 @@ const highlightTool = document.getElementById('highlightTool');
 const markerTool = document.getElementById('markerTool');
 const filterTool = document.getElementById('filterTool');
 const rectangleTool = document.getElementById('rectangleTool');
+const ellipseTool = document.getElementById('ellipseTool');
 const blurTool = document.getElementById('blurTool');
 const cropTool = document.getElementById('cropTool');
 const colorPicker = document.getElementById('colorPicker');
@@ -79,7 +80,7 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, blurTool, cropTool].forEach(btn => {
+[arrowTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -304,6 +305,22 @@ function drawAnnotation(annotation) {
         annotation.endY - annotation.startY
       );
       break;
+    case 'ellipse': {
+      const radiusX = Math.abs(annotation.endX - annotation.startX) / 2;
+      const radiusY = Math.abs(annotation.endY - annotation.startY) / 2;
+
+      if (radiusX < 0.5 || radiusY < 0.5) {
+        break;
+      }
+
+      const centerX = (annotation.startX + annotation.endX) / 2;
+      const centerY = (annotation.startY + annotation.endY) / 2;
+
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
     case 'blur':
       applyPixelatedBlur(
         annotation.startX,

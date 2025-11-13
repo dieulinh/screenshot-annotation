@@ -5,17 +5,8 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 ## Features
 
 ✨ **Screenshot Capture**
-- Capture visible tab with one click
-- High-quality PNG screenshots
 
 🎨 **Annotation Tools**
-- **Arrows** - Point out important details
-- **Text** - Add custom text labels
-- **Highlights & Marker** - Highlight areas with transparent color or freehand marker strokes — ~~Black bar censoring option~~
-- **Rectangles** - Draw boxes around content
-- **Blur/Pixelate** - Hide sensitive information (passwords, emails, personal data)
-- **Crop** - Select and crop to a specific area of the screenshot
-
 ⚙️ **Customization**
 - Choose annotation colors
 - Adjust line width (1-10px)
