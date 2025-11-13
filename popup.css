@@ -133,6 +133,12 @@ h2 {
   color: #667eea;
 }
 
+.tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .separator {
   width: 1px;
   height: 24px;
