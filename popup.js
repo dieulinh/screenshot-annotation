@@ -16,6 +16,7 @@ let filterDragStart = { x: 0, y: 0 };
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
 const arrowTool = document.getElementById('arrowTool');
+const lineTool = document.getElementById('lineTool');
 const textTool = document.getElementById('textTool');
 const highlightTool = document.getElementById('highlightTool');
 const markerTool = document.getElementById('markerTool');
@@ -80,7 +81,7 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
+[arrowTool, lineTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -249,6 +250,9 @@ function drawAnnotation(annotation) {
     case 'arrow':
       drawArrow(annotation.startX, annotation.startY, annotation.endX, annotation.endY);
       break;
+    case 'line':
+      drawLine(annotation.startX, annotation.startY, annotation.endX, annotation.endY);
+      break;
     case 'marker': {
       const prevAlpha = ctx.globalAlpha;
       const points = annotation.points || [];
@@ -359,6 +363,13 @@ function drawArrow(fromX, fromY, toX, toY) {
     toX - headlen * Math.cos(angle + Math.PI / 6),
     toY - headlen * Math.sin(angle + Math.PI / 6)
   );
+  ctx.stroke();
+}
+
+function drawLine(fromX, fromY, toX, toY) {
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
   ctx.stroke();
 }
 
