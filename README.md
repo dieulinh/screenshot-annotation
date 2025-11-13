@@ -14,6 +14,7 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 - **Highlights** - Highlight areas with transparent color
 - **Rectangles** - Draw boxes around content
 - **Blur/Pixelate** - Hide sensitive information (passwords, emails, personal data)
+- **Crop** - Select and crop to a specific area of the screenshot
 
 ⚙️ **Customization**
 - Choose annotation colors
@@ -26,6 +27,8 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 - Save to custom folders
 - Auto-generated timestamps in filenames
 - Remembers your default folder
+- Resizable window - drag from bottom-right corner
+- Window size is saved between sessions
 
 ## Installation
 
@@ -46,11 +49,12 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
    - Current visible tab will be captured
 
 2. **Annotate**
-   - Select a tool (Arrow, Text, Highlight, Rectangle, or Blur)
+   - Select a tool (Arrow, Text, Highlight, Rectangle, Blur, or Crop)
    - Choose color and line width (or blur intensity for blur tool)
    - Draw on the screenshot
    - For text: click where you want text, enter in prompt
    - For blur: drag to select area containing sensitive data
+   - For crop: drag to select area, adjust selection, click ✓ Crop to apply
 
 3. **Save**
    - Enter folder name (e.g., "bug-reports", "tutorials")
@@ -60,12 +64,16 @@ A powerful Chrome extension for taking screenshots and annotating them with arro
 
 ## Tips
 
+- **Crop first**: Use crop tool before adding annotations to focus on specific area
+- **Adjust crop**: Drag edges to resize, click inside to move, or click outside to create new selection
+- **Resize window**: Drag from the bottom-right corner to make the window larger/smaller (600px-1200px wide)
 - **Hide sensitive data**: Use the blur tool to pixelate passwords, emails, credit cards, or personal information
 - **Blur intensity**: Light blur for slight obfuscation, Maximum blur for complete privacy
 - **Undo mistakes**: Use the Undo button (↶)
 - **Start over**: Use Clear All button (🗑️)
 - **Default folder**: Your last used folder name is remembered
 - **Timestamps**: Filenames include date/time to avoid overwrites
+- **Window size**: Your preferred window size is saved automatically
 
 ## Keyboard Shortcuts (Coming Soon)
 
@@ -105,9 +113,10 @@ screenshot-annotator/
 - Circle/ellipse tool
 - Free-hand drawing
 - Copy to clipboard
-- Multiple pages/area selection
+- Multiple screenshots/comparison view
 - Export as PDF
 - Black bar censoring option
+- Rotate image
 
 ## License
 

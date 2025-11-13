@@ -5,6 +5,9 @@ let startX, startY;
 let annotations = [];
 let currentAnnotation = null;
 let screenshotDataUrl = null;
+let isCropMode = false;
+let cropSelection = null;
+let originalImageData = null;
 
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
@@ -13,11 +16,14 @@ const textTool = document.getElementById('textTool');
 const highlightTool = document.getElementById('highlightTool');
 const rectangleTool = document.getElementById('rectangleTool');
 const blurTool = document.getElementById('blurTool');
+const cropTool = document.getElementById('cropTool');
 const colorPicker = document.getElementById('colorPicker');
 const lineWidth = document.getElementById('lineWidth');
 const blurIntensity = document.getElementById('blurIntensity');
 const undoBtn = document.getElementById('undoBtn');
 const clearBtn = document.getElementById('clearBtn');
+const applyCropBtn = document.getElementById('applyCropBtn');
+const cancelCropBtn = document.getElementById('cancelCropBtn');
 const saveBtn = document.getElementById('saveBtn');
 const cancelBtn = document.getElementById('cancelBtn');
 const editorSection = document.getElementById('editorSection');
@@ -64,11 +70,18 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, textTool, highlightTool, rectangleTool, blurTool].forEach(btn => {
+[arrowTool, textTool, highlightTool, rectangleTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentTool = btn.id.replace('Tool', '');
+    
+    // Handle crop mode
+    if (currentTool === 'crop') {
+      enterCropMode();
+    } else {
+      exitCropMode();
+    }
     
     // Show/hide blur intensity selector
     if (currentTool === 'blur') {
@@ -88,10 +101,25 @@ function setupCanvasListeners() {
   canvas.addEventListener('mousedown', startDrawing);
   canvas.addEventListener('mousemove', draw);
   canvas.addEventListener('mouseup', stopDrawing);
-  canvas.addEventListener('mouseout', stopDrawing);
+  canvas.addEventListener('mouseleave', handleMouseLeave);
+}
+
+function handleMouseLeave(e) {
+  if (isCropMode && cropDragging) {
+    // Finish the crop selection when mouse leaves
+    onCropMouseUp(e);
+  } else if (isDrawing) {
+    // Finish the annotation when mouse leaves
+    stopDrawing(e);
+  }
 }
 
 function startDrawing(e) {
+  if (isCropMode) {
+    onCropMouseDown(e);
+    return;
+  }
+  
   const rect = canvas.getBoundingClientRect();
   startX = e.clientX - rect.left;
   startY = e.clientY - rect.top;
@@ -113,6 +141,11 @@ function startDrawing(e) {
 }
 
 function draw(e) {
+  if (isCropMode) {
+    onCropMouseMove(e);
+    return;
+  }
+  
   if (!isDrawing) return;
   
   const rect = canvas.getBoundingClientRect();
@@ -131,6 +164,11 @@ function draw(e) {
 }
 
 function stopDrawing(e) {
+  if (isCropMode) {
+    onCropMouseUp(e);
+    return;
+  }
+  
   if (!isDrawing) return;
   
   const rect = canvas.getBoundingClientRect();
@@ -294,6 +332,11 @@ function redrawCanvas() {
     annotations.forEach(annotation => {
       drawAnnotation(annotation);
     });
+    
+    // Redraw crop overlay if in crop mode
+    if (isCropMode && cropSelection) {
+      drawCropOverlayOnly();
+    }
   };
   img.src = screenshotDataUrl;
 }
@@ -352,6 +395,9 @@ cancelBtn.addEventListener('click', () => {
 function resetEditor() {
   annotations = [];
   screenshotDataUrl = null;
+  isCropMode = false;
+  cropSelection = null;
+  originalImageData = null;
   document.querySelector('.capture-section').classList.remove('hidden');
   editorSection.classList.add('hidden');
   
@@ -359,6 +405,297 @@ function resetEditor() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 }
+
+// Crop functionality
+function enterCropMode() {
+  isCropMode = true;
+  cropSelection = {
+    x: canvas.width * 0.2,
+    y: canvas.height * 0.2,
+    width: canvas.width * 0.6,
+    height: canvas.height * 0.6
+  };
+  
+  // Store original image data
+  if (!originalImageData) {
+    originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  }
+  
+  // Show crop buttons
+  applyCropBtn.classList.remove('hidden');
+  cancelCropBtn.classList.remove('hidden');
+  
+  // Hide other controls
+  colorPicker.classList.add('hidden');
+  lineWidth.classList.add('hidden');
+  undoBtn.classList.add('hidden');
+  clearBtn.classList.add('hidden');
+  
+  drawCropOverlay();
+}
+
+function exitCropMode() {
+  isCropMode = false;
+  cropSelection = null;
+  
+  // Hide crop buttons
+  applyCropBtn.classList.add('hidden');
+  cancelCropBtn.classList.add('hidden');
+  
+  // Show other controls
+  colorPicker.classList.remove('hidden');
+  lineWidth.classList.remove('hidden');
+  undoBtn.classList.remove('hidden');
+  clearBtn.classList.remove('hidden');
+  
+  redrawCanvas();
+}
+
+function drawCropOverlay() {
+  redrawCanvas();
+}
+
+function drawDarkenedOverlay() {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  
+  // Top
+  ctx.fillRect(0, 0, canvas.width, cropSelection.y);
+  // Bottom
+  ctx.fillRect(0, cropSelection.y + cropSelection.height, canvas.width, canvas.height - cropSelection.y - cropSelection.height);
+  // Left
+  ctx.fillRect(0, cropSelection.y, cropSelection.x, cropSelection.height);
+  // Right
+  ctx.fillRect(cropSelection.x + cropSelection.width, cropSelection.y, canvas.width - cropSelection.x - cropSelection.width, cropSelection.height);
+}
+
+function drawSelectionBorder() {
+  ctx.strokeStyle = '#667eea';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 4]);
+  ctx.strokeRect(cropSelection.x, cropSelection.y, cropSelection.width, cropSelection.height);
+  ctx.setLineDash([]);
+}
+
+function drawCropOverlayOnly() {
+  if (!cropSelection || cropSelection.width === 0 || cropSelection.height === 0) {
+    return;
+  }
+  
+  // Draw darkened area outside selection
+  ctx.save();
+  drawDarkenedOverlay();
+  
+  // Draw selection border
+  drawSelectionBorder();
+  
+  // Draw corner handles
+  const handleSize = 10;
+  ctx.fillStyle = '#667eea';
+  
+  // Top-left
+  ctx.fillRect(cropSelection.x - handleSize/2, cropSelection.y - handleSize/2, handleSize, handleSize);
+  // Top-right
+  ctx.fillRect(cropSelection.x + cropSelection.width - handleSize/2, cropSelection.y - handleSize/2, handleSize, handleSize);
+  // Bottom-left
+  ctx.fillRect(cropSelection.x - handleSize/2, cropSelection.y + cropSelection.height - handleSize/2, handleSize, handleSize);
+  // Bottom-right
+  ctx.fillRect(cropSelection.x + cropSelection.width - handleSize/2, cropSelection.y + cropSelection.height - handleSize/2, handleSize, handleSize);
+  
+  // Draw edge handles (middle of each side)
+  // Top
+  ctx.fillRect(cropSelection.x + cropSelection.width/2 - handleSize/2, cropSelection.y - handleSize/2, handleSize, handleSize);
+  // Bottom
+  ctx.fillRect(cropSelection.x + cropSelection.width/2 - handleSize/2, cropSelection.y + cropSelection.height - handleSize/2, handleSize, handleSize);
+  // Left
+  ctx.fillRect(cropSelection.x - handleSize/2, cropSelection.y + cropSelection.height/2 - handleSize/2, handleSize, handleSize);
+  // Right
+  ctx.fillRect(cropSelection.x + cropSelection.width - handleSize/2, cropSelection.y + cropSelection.height/2 - handleSize/2, handleSize, handleSize);
+  
+  ctx.restore();
+}
+
+let cropDragging = false;
+let cropDragType = null;
+let cropDragStart = { x: 0, y: 0 };
+
+function onCropMouseDown(e) {
+  if (!isCropMode) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  cropDragStart = { x, y };
+  
+  // Check if clicking inside selection (for move)
+  if (x >= cropSelection.x && x <= cropSelection.x + cropSelection.width &&
+      y >= cropSelection.y && y <= cropSelection.y + cropSelection.height) {
+    
+    // Check edges for resize
+    const edge = 10;
+    if (Math.abs(x - cropSelection.x) < edge) cropDragType = 'w';
+    else if (Math.abs(x - (cropSelection.x + cropSelection.width)) < edge) cropDragType = 'e';
+    else if (Math.abs(y - cropSelection.y) < edge) cropDragType = 'n';
+    else if (Math.abs(y - (cropSelection.y + cropSelection.height)) < edge) cropDragType = 's';
+    else cropDragType = 'move';
+    
+    cropDragging = true;
+  } else {
+    // Start new selection
+    cropSelection = { x, y, width: 0, height: 0 };
+    cropDragType = 'new';
+    cropDragging = true;
+  }
+  
+  e.stopPropagation();
+}
+
+function onCropMouseMove(e) {
+  if (!isCropMode) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  if (cropDragging) {
+    const dx = x - cropDragStart.x;
+    const dy = y - cropDragStart.y;
+    
+    if (cropDragType === 'new') {
+      cropSelection.width = dx;
+      cropSelection.height = dy;
+    } else if (cropDragType === 'move') {
+      cropSelection.x += dx;
+      cropSelection.y += dy;
+      cropDragStart = { x, y };
+    } else if (cropDragType === 'w') {
+      cropSelection.x += dx;
+      cropSelection.width -= dx;
+      cropDragStart.x = x;
+    } else if (cropDragType === 'e') {
+      cropSelection.width += dx;
+      cropDragStart.x = x;
+    } else if (cropDragType === 'n') {
+      cropSelection.y += dy;
+      cropSelection.height -= dy;
+      cropDragStart.y = y;
+    } else if (cropDragType === 's') {
+      cropSelection.height += dy;
+      cropDragStart.y = y;
+    }
+    
+    // Normalize selection
+    if (cropSelection.width < 0) {
+      cropSelection.x += cropSelection.width;
+      cropSelection.width = Math.abs(cropSelection.width);
+    }
+    if (cropSelection.height < 0) {
+      cropSelection.y += cropSelection.height;
+      cropSelection.height = Math.abs(cropSelection.height);
+    }
+    
+    // Keep within bounds
+    cropSelection.x = Math.max(0, Math.min(cropSelection.x, canvas.width - cropSelection.width));
+    cropSelection.y = Math.max(0, Math.min(cropSelection.y, canvas.height - cropSelection.height));
+    
+    drawCropOverlay();
+    e.stopPropagation();
+  } else {
+    // Update cursor
+    const edge = 10;
+    let cursor = 'default';
+    
+    if (cropSelection && x >= cropSelection.x && x <= cropSelection.x + cropSelection.width &&
+        y >= cropSelection.y && y <= cropSelection.y + cropSelection.height) {
+      if (Math.abs(x - cropSelection.x) < edge) cursor = 'ew-resize';
+      else if (Math.abs(x - (cropSelection.x + cropSelection.width)) < edge) cursor = 'ew-resize';
+      else if (Math.abs(y - cropSelection.y) < edge) cursor = 'ns-resize';
+      else if (Math.abs(y - (cropSelection.y + cropSelection.height)) < edge) cursor = 'ns-resize';
+      else cursor = 'move';
+    }
+    
+    canvas.style.cursor = cursor;
+  }
+}
+
+function onCropMouseUp(e) {
+  if (!isCropMode) return;
+  
+  if (cropDragging) {
+    cropDragging = false;
+    
+    // Normalize the selection one final time
+    if (cropSelection.width < 0) {
+      cropSelection.x += cropSelection.width;
+      cropSelection.width = Math.abs(cropSelection.width);
+    }
+    if (cropSelection.height < 0) {
+      cropSelection.y += cropSelection.height;
+      cropSelection.height = Math.abs(cropSelection.height);
+    }
+    
+    // Ensure selection stays within bounds
+    cropSelection.x = Math.max(0, Math.min(cropSelection.x, canvas.width));
+    cropSelection.y = Math.max(0, Math.min(cropSelection.y, canvas.height));
+    cropSelection.width = Math.max(0, Math.min(cropSelection.width, canvas.width - cropSelection.x));
+    cropSelection.height = Math.max(0, Math.min(cropSelection.height, canvas.height - cropSelection.y));
+    
+    // Redraw the canvas and overlay to ensure it's visible
+    redrawCanvas();
+    
+    cropDragType = null;
+    
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }
+}
+
+// Apply crop
+applyCropBtn.addEventListener('click', () => {
+  if (!cropSelection || cropSelection.width < 10 || cropSelection.height < 10) {
+    alert('Selection too small. Please select a larger area.');
+    return;
+  }
+  
+  // Create new canvas with cropped area
+  const croppedImageData = ctx.getImageData(
+    Math.round(cropSelection.x),
+    Math.round(cropSelection.y),
+    Math.round(cropSelection.width),
+    Math.round(cropSelection.height)
+  );
+  
+  // Resize canvas
+  canvas.width = Math.round(cropSelection.width);
+  canvas.height = Math.round(cropSelection.height);
+  
+  // Draw cropped image
+  ctx.putImageData(croppedImageData, 0, 0);
+  
+  // Update screenshot data URL
+  screenshotDataUrl = canvas.toDataURL('image/png');
+  
+  // Clear annotations and original image data
+  annotations = [];
+  originalImageData = null;
+  
+  // Clear crop selection BEFORE exiting crop mode
+  cropSelection = null;
+  
+  // Exit crop mode
+  exitCropMode();
+  
+  // Switch back to arrow tool
+  arrowTool.click();
+});
+
+// Cancel crop
+cancelCropBtn.addEventListener('click', () => {
+  exitCropMode();
+  arrowTool.click();
+});
 
 // Load saved folder name
 chrome.storage.local.get(['defaultFolder'], (result) => {
@@ -370,4 +707,91 @@ chrome.storage.local.get(['defaultFolder'], (result) => {
 // Save folder name when changed
 folderNameInput.addEventListener('change', () => {
   chrome.storage.local.set({ defaultFolder: folderNameInput.value });
+});
+
+// Window resize functionality
+let isResizing = false;
+let lastX, lastY;
+
+// Load saved window size or use viewport dimensions
+chrome.storage.local.get(['popupWidth', 'popupHeight'], (result) => {
+  if (result.popupWidth && result.popupHeight) {
+    document.body.style.width = result.popupWidth + 'px';
+    document.body.style.height = result.popupHeight + 'px';
+  } else {
+    // Default to viewport height on first use
+    document.body.style.height = '100vh';
+  }
+});
+
+// Add resize handle functionality
+const resizeHandle = document.querySelector('.resize-handle');
+
+document.addEventListener('mousedown', (e) => {
+  const rect = resizeHandle.getBoundingClientRect();
+  const isNearHandle = 
+    e.clientX >= rect.left - 10 && 
+    e.clientX <= rect.right + 10 && 
+    e.clientY >= rect.top - 10 && 
+    e.clientY <= rect.bottom + 10;
+  
+  if (isNearHandle) {
+    isResizing = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    document.body.style.userSelect = 'none';
+    resizeHandle.style.pointerEvents = 'auto';
+    e.preventDefault();
+  }
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) {
+    // Show cursor change near handle
+    const rect = resizeHandle.getBoundingClientRect();
+    const isNearHandle = 
+      e.clientX >= rect.left - 10 && 
+      e.clientX <= rect.right + 10 && 
+      e.clientY >= rect.top - 10 && 
+      e.clientY <= rect.bottom + 10;
+    
+    if (isNearHandle) {
+      document.body.style.cursor = 'nwse-resize';
+      resizeHandle.style.pointerEvents = 'auto';
+    } else {
+      document.body.style.cursor = 'default';
+      resizeHandle.style.pointerEvents = 'none';
+    }
+    return;
+  }
+  
+  const deltaX = e.clientX - lastX;
+  const deltaY = e.clientY - lastY;
+  
+  const currentWidth = document.body.offsetWidth;
+  const currentHeight = document.body.offsetHeight;
+  
+  const newWidth = Math.max(600, Math.min(1200, currentWidth + deltaX));
+  const newHeight = Math.max(400, Math.min(900, currentHeight + deltaY));
+  
+  document.body.style.width = newWidth + 'px';
+  document.body.style.height = newHeight + 'px';
+  
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+
+document.addEventListener('mouseup', () => {
+  if (isResizing) {
+    isResizing = false;
+    document.body.style.userSelect = '';
+    document.body.style.cursor = 'default';
+    resizeHandle.style.pointerEvents = 'none';
+    
+    // Save the new size
+    chrome.storage.local.set({
+      popupWidth: document.body.offsetWidth,
+      popupHeight: document.body.offsetHeight
+    });
+  }
 });
