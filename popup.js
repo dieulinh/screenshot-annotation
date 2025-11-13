@@ -15,13 +15,14 @@ let filterDragStart = { x: 0, y: 0 };
 let pendingTextAnnotation = null;
 let textInputOverlay = null;
 let textInputField = null;
-let isTextModeActive = false;
+let textInputMode = null;
 let textOverlayScrollHandler = null;
 
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
 const arrowTool = document.getElementById('arrowTool');
 const lineTool = document.getElementById('lineTool');
+const headingTool = document.getElementById('headingTool');
 const textTool = document.getElementById('textTool');
 const textApplyBtn = document.getElementById('textApplyBtn');
 const textCancelBtn = document.getElementById('textCancelBtn');
@@ -34,6 +35,8 @@ const blurTool = document.getElementById('blurTool');
 const cropTool = document.getElementById('cropTool');
 const colorPicker = document.getElementById('colorPicker');
 const lineWidth = document.getElementById('lineWidth');
+const headingLevel = document.getElementById('headingLevel');
+const fontFamily = document.getElementById('fontFamily');
 const blurIntensity = document.getElementById('blurIntensity');
 const filterType = document.getElementById('filterType');
 const filterApplyBtn = document.getElementById('filterApplyBtn');
@@ -88,7 +91,7 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, lineTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
+[arrowTool, lineTool, headingTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -108,7 +111,9 @@ function loadScreenshotToCanvas(dataUrl) {
     }
 
     if (currentTool === 'text') {
-      enterTextMode();
+      enterTextMode('text');
+    } else if (currentTool === 'heading') {
+      enterTextMode('heading');
     } else {
       exitTextMode();
     }
@@ -119,9 +124,15 @@ function loadScreenshotToCanvas(dataUrl) {
     const showFilterControls = currentTool === 'filter';
     filterType.classList.toggle('hidden', !showFilterControls);
 
-    const showColorAndWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop';
-    colorPicker.classList.toggle('hidden', !showColorAndWidth);
-    lineWidth.classList.toggle('hidden', !showColorAndWidth);
+    const showColorPicker = !showBlurControls && !showFilterControls && currentTool !== 'crop';
+    colorPicker.classList.toggle('hidden', !showColorPicker);
+
+    const showLineWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'heading';
+    lineWidth.classList.toggle('hidden', !showLineWidth);
+
+    const showHeadingControls = currentTool === 'heading';
+    headingLevel.classList.toggle('hidden', !showHeadingControls);
+    fontFamily.classList.toggle('hidden', !showHeadingControls);
   });
 });
 
@@ -160,7 +171,7 @@ function startDrawing(e) {
   startX = e.clientX - rect.left;
   startY = e.clientY - rect.top;
   
-  if (currentTool === 'text') {
+  if (currentTool === 'text' || currentTool === 'heading') {
     showTextInputOverlay(startX, startY);
     return;
   }
@@ -347,9 +358,25 @@ function drawAnnotation(annotation) {
         annotation.blurIntensity
       );
       break;
+    case 'heading': {
+      const size = annotation.fontSize || 32;
+      const weight = annotation.fontWeight || '700';
+      const family = annotation.fontFamily || 'Arial';
+      ctx.save();
+      ctx.fillStyle = annotation.color;
+      ctx.textBaseline = 'top';
+      ctx.font = `${weight} ${size}px ${family}`;
+      ctx.fillText(annotation.text, annotation.startX, annotation.startY);
+      ctx.restore();
+      break;
+    }
     case 'text':
+      ctx.save();
+      ctx.fillStyle = annotation.color;
+      ctx.textBaseline = 'top';
       ctx.font = `${annotation.lineWidth * 8}px Arial`;
       ctx.fillText(annotation.text, annotation.startX, annotation.startY);
+      ctx.restore();
       break;
   }
 }
@@ -769,7 +796,7 @@ function hslToRgb(h, s, l) {
   };
 }
 
-function addTextAnnotation(x, y, text, size, color) {
+function addTextAnnotation(x, y, text, size, color, options = {}) {
   const value = typeof text === 'string' ? text.trim() : '';
   if (!value) {
     return;
@@ -777,16 +804,41 @@ function addTextAnnotation(x, y, text, size, color) {
 
   const lineSize = Number.isFinite(size) ? size : parseInt(lineWidth.value, 10) || 3;
   const fillColor = color || colorPicker.value;
+  const mode = options.type === 'heading' ? 'heading' : 'text';
 
-  annotations.push({
-    tool: 'text',
+  const annotation = {
+    tool: mode,
     color: fillColor,
     lineWidth: lineSize,
     blurIntensity: parseInt(blurIntensity.value, 10),
     startX: x,
     startY: y,
     text: value
-  });
+  };
+
+  if (mode === 'heading') {
+    annotation.fontFamily = options.fontFamily || fontFamily.value || 'Arial';
+    annotation.fontSize = options.fontSize || headingSizeToPixels(options.headingLevel || 'h2');
+    annotation.fontWeight = '700';
+    annotation.headingLevel = options.headingLevel || 'h2';
+  }
+
+  annotations.push(annotation);
+}
+
+function headingSizeToPixels(level) {
+  switch (level) {
+    case 'h1':
+      return 40;
+    case 'h2':
+      return 32;
+    case 'h3':
+      return 26;
+    case 'h4':
+      return 22;
+    default:
+      return 32;
+  }
 }
 
 function redrawCanvas() {
@@ -864,6 +916,18 @@ filterClearBtn.addEventListener('click', () => {
 
 textApplyBtn.addEventListener('click', applyPendingTextAnnotation);
 textCancelBtn.addEventListener('click', cancelPendingTextAnnotation);
+
+headingLevel.addEventListener('change', () => {
+  if (textInputMode === 'heading') {
+    refreshTextInputPreview();
+  }
+});
+
+fontFamily.addEventListener('change', () => {
+  if (textInputMode === 'heading') {
+    refreshTextInputPreview();
+  }
+});
 
 // Save screenshot
 saveBtn.addEventListener('click', () => {
@@ -946,13 +1010,17 @@ function exitFilterMode() {
   }
 }
 
-function enterTextMode() {
-  if (isTextModeActive) {
+function enterTextMode(mode = 'text') {
+  if (textInputMode === mode) {
     updateTextControlsState();
     return;
   }
 
-  isTextModeActive = true;
+  if (textInputMode && textInputMode !== mode) {
+    hideTextInputOverlay();
+  }
+
+  textInputMode = mode;
   textApplyBtn.classList.remove('hidden');
   textCancelBtn.classList.remove('hidden');
   textApplyBtn.disabled = true;
@@ -961,11 +1029,11 @@ function enterTextMode() {
 }
 
 function exitTextMode() {
-  if (!isTextModeActive && !pendingTextAnnotation && !textInputOverlay) {
+  if (!textInputMode && !pendingTextAnnotation && !textInputOverlay) {
     return;
   }
 
-  isTextModeActive = false;
+  textInputMode = null;
   hideTextInputOverlay();
   textApplyBtn.classList.add('hidden');
   textCancelBtn.classList.add('hidden');
@@ -982,7 +1050,26 @@ function updateTextControlsState() {
   textCancelBtn.disabled = !hasPending;
 
   if (canvas) {
-    canvas.style.cursor = isTextModeActive ? 'text' : '';
+    canvas.style.cursor = textInputMode ? 'text' : '';
+  }
+}
+
+function refreshTextInputPreview() {
+  if (!textInputField) {
+    return;
+  }
+
+  if (textInputMode === 'heading') {
+    const level = headingLevel.value || 'h2';
+    const font = fontFamily.value || 'Arial';
+    const size = headingSizeToPixels(level);
+    textInputField.style.fontFamily = font;
+    textInputField.style.fontWeight = '700';
+    textInputField.style.fontSize = `${size}px`;
+  } else {
+    textInputField.style.fontFamily = '';
+    textInputField.style.fontWeight = '';
+    textInputField.style.fontSize = '';
   }
 }
 
@@ -996,8 +1083,8 @@ function showTextInputOverlay(x, y) {
     return;
   }
 
-  if (!isTextModeActive) {
-    enterTextMode();
+  if (!textInputMode) {
+    enterTextMode('text');
   }
 
   hideTextInputOverlay();
@@ -1006,19 +1093,22 @@ function showTextInputOverlay(x, y) {
   textInputOverlay.className = 'text-input-overlay';
 
   textInputField = document.createElement('textarea');
-  textInputField.placeholder = 'Type your text...';
-  textInputField.rows = 3;
+  textInputField.placeholder = textInputMode === 'heading' ? 'Enter heading text...' : 'Type your text...';
+  textInputField.rows = textInputMode === 'heading' ? 2 : 3;
   textInputOverlay.appendChild(textInputField);
 
   container.appendChild(textInputOverlay);
 
   pendingTextAnnotation = {
     x,
-    y
+    y,
+    mode: textInputMode
   };
 
   textInputField.addEventListener('keydown', handleTextInputKeydown);
   textInputField.addEventListener('input', updateTextControlsState);
+
+  refreshTextInputPreview();
 
   textOverlayScrollHandler = () => {
     positionTextOverlay(pendingTextAnnotation.x, pendingTextAnnotation.y);
@@ -1106,13 +1196,36 @@ function applyPendingTextAnnotation() {
     return;
   }
 
-  addTextAnnotation(
-    pendingTextAnnotation.x,
-    pendingTextAnnotation.y,
-    value,
-    parseInt(lineWidth.value, 10) || 3,
-    colorPicker.value
-  );
+  const mode = pendingTextAnnotation.mode || textInputMode || 'text';
+
+  if (mode === 'heading') {
+    const level = headingLevel.value || 'h2';
+    const font = fontFamily.value || 'Arial';
+    const fontSize = headingSizeToPixels(level);
+
+    addTextAnnotation(
+      pendingTextAnnotation.x,
+      pendingTextAnnotation.y,
+      value,
+      Math.round(fontSize / 6),
+      colorPicker.value,
+      {
+        type: 'heading',
+        fontFamily: font,
+        fontSize,
+        headingLevel: level
+      }
+    );
+  } else {
+    addTextAnnotation(
+      pendingTextAnnotation.x,
+      pendingTextAnnotation.y,
+      value,
+      parseInt(lineWidth.value, 10) || 3,
+      colorPicker.value,
+      { type: 'text' }
+    );
+  }
 
   hideTextInputOverlay();
   updateTextControlsState();

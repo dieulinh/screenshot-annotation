@@ -25,6 +25,12 @@
             <line x1="3" y1="17" x2="17" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
           </svg>
         </button>
+        <button id="headingTool" class="tool-btn" title="Add Heading">
+          <svg width="20" height="20" viewBox="0 0 20 20">
+            <text x="3" y="15" font-size="14" font-weight="bold" fill="currentColor">H</text>
+            <text x="11" y="15" font-size="10" font-weight="bold" fill="currentColor">1</text>
+          </svg>
+        </button>
         <button id="textTool" class="tool-btn" title="Add Text">
           <svg width="20" height="20" viewBox="0 0 20 20">
             <text x="4" y="15" font-size="14" font-weight="bold" fill="currentColor">T</text>
@@ -90,6 +96,24 @@
         
         <input type="color" id="colorPicker" value="#FF0000" title="Color">
         <input type="number" id="lineWidth" value="3" min="1" max="10" title="Line Width">
+        <select id="headingLevel" class="heading-select hidden" title="Heading Size">
+          <option value="h1">Heading 1</option>
+          <option value="h2" selected>Heading 2</option>
+          <option value="h3">Heading 3</option>
+          <option value="h4">Heading 4</option>
+        </select>
+        <select id="fontFamily" class="font-select hidden" title="Font Family">
+          <option value="Arial" selected>Arial</option>
+          <option value="Helvetica">Helvetica</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Times New Roman">Times New Roman</option>
+          <option value="Trebuchet MS">Trebuchet MS</option>
+          <option value="Montserrat">Montserrat</option>
+          <option value="Roboto">Roboto</option>
+          <option value="Playfair Display">Playfair Display</option>
+          <option value="Fira Sans">Fira Sans</option>
+          <option value="Courier New">Courier New</option>
+        </select>
         <select id="blurIntensity" class="blur-intensity hidden" title="Blur Intensity">
           <option value="5">Light Blur</option>
           <option value="10" selected>Medium Blur</option>

@@ -163,6 +163,23 @@ h2 {
   font-size: 14px;
 }
 
+.heading-select,
+.font-select {
+  height: 36px;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.heading-select.hidden,
+.font-select.hidden {
+  display: none;
+}
+
 .blur-intensity {
   height: 36px;
   border: 2px solid #dee2e6;
