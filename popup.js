@@ -8,6 +8,10 @@ let screenshotDataUrl = null;
 let isCropMode = false;
 let cropSelection = null;
 let originalImageData = null;
+let isFilterMode = false;
+let filterSelection = null;
+let filterSelecting = false;
+let filterDragStart = { x: 0, y: 0 };
 
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
@@ -23,6 +27,8 @@ const colorPicker = document.getElementById('colorPicker');
 const lineWidth = document.getElementById('lineWidth');
 const blurIntensity = document.getElementById('blurIntensity');
 const filterType = document.getElementById('filterType');
+const filterApplyBtn = document.getElementById('filterApplyBtn');
+const filterClearBtn = document.getElementById('filterClearBtn');
 const undoBtn = document.getElementById('undoBtn');
 const clearBtn = document.getElementById('clearBtn');
 const applyCropBtn = document.getElementById('applyCropBtn');
@@ -80,21 +86,27 @@ function loadScreenshotToCanvas(dataUrl) {
     currentTool = btn.id.replace('Tool', '');
     
     // Handle crop mode
-      if (currentTool === 'crop') {
-        enterCropMode();
-      } else {
-        exitCropMode();
-      }
+    if (currentTool === 'crop') {
+      enterCropMode();
+    } else {
+      exitCropMode();
+    }
 
-      const showBlurControls = currentTool === 'blur';
-      blurIntensity.classList.toggle('hidden', !showBlurControls);
+    if (currentTool === 'filter') {
+      enterFilterMode();
+    } else {
+      exitFilterMode();
+    }
 
-      const showFilterControls = currentTool === 'filter';
-      filterType.classList.toggle('hidden', !showFilterControls);
+    const showBlurControls = currentTool === 'blur';
+    blurIntensity.classList.toggle('hidden', !showBlurControls);
 
-      const showColorAndWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop';
-      colorPicker.classList.toggle('hidden', !showColorAndWidth);
-      lineWidth.classList.toggle('hidden', !showColorAndWidth);
+    const showFilterControls = currentTool === 'filter';
+    filterType.classList.toggle('hidden', !showFilterControls);
+
+    const showColorAndWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop';
+    colorPicker.classList.toggle('hidden', !showColorAndWidth);
+    lineWidth.classList.toggle('hidden', !showColorAndWidth);
   });
 });
 
@@ -110,6 +122,8 @@ function handleMouseLeave(e) {
   if (isCropMode && cropDragging) {
     // Finish the crop selection when mouse leaves
     onCropMouseUp(e);
+  } else if (isFilterMode && filterSelecting) {
+    finalizeFilterSelection(e);
   } else if (isDrawing) {
     // Finish the annotation when mouse leaves
     stopDrawing(e);
@@ -119,6 +133,11 @@ function handleMouseLeave(e) {
 function startDrawing(e) {
   if (isCropMode) {
     onCropMouseDown(e);
+    return;
+  }
+
+  if (isFilterMode && currentTool === 'filter') {
+    beginFilterSelection(e);
     return;
   }
   
@@ -152,6 +171,11 @@ function draw(e) {
     onCropMouseMove(e);
     return;
   }
+
+  if (isFilterMode && currentTool === 'filter') {
+    updateFilterSelection(e);
+    return;
+  }
   
   if (!isDrawing) return;
   
@@ -180,6 +204,11 @@ function draw(e) {
 function stopDrawing(e) {
   if (isCropMode) {
     onCropMouseUp(e);
+    return;
+  }
+
+  if (isFilterMode && currentTool === 'filter') {
+    finalizeFilterSelection(e);
     return;
   }
   
@@ -654,6 +683,10 @@ function redrawCanvas() {
     if (isCropMode && cropSelection) {
       drawCropOverlayOnly();
     }
+
+    if (isFilterMode && filterSelection) {
+      drawFilterSelectionOverlay(filterSelection, filterSelecting);
+    }
   };
   img.src = screenshotDataUrl;
 }
@@ -668,6 +701,41 @@ undoBtn.addEventListener('click', () => {
 clearBtn.addEventListener('click', () => {
   if (confirm('Clear all annotations?')) {
     annotations = [];
+    filterSelection = null;
+    filterSelecting = false;
+    updateFilterControlsState();
+    redrawCanvas();
+  }
+});
+
+filterApplyBtn.addEventListener('click', () => {
+  if (!isFilterMode || !filterSelection || filterSelection.width <= 2 || filterSelection.height <= 2) {
+    alert('Select an area first, then choose a filter.');
+    return;
+  }
+
+  annotations.push({
+    tool: 'filter',
+    startX: filterSelection.x,
+    startY: filterSelection.y,
+    endX: filterSelection.x + filterSelection.width,
+    endY: filterSelection.y + filterSelection.height,
+    filterType: filterType.value
+  });
+
+  filterSelection = null;
+  filterSelecting = false;
+  updateFilterControlsState();
+  if (canvas && screenshotDataUrl) {
+    redrawCanvas();
+  }
+});
+
+filterClearBtn.addEventListener('click', () => {
+  filterSelection = null;
+  filterSelecting = false;
+  updateFilterControlsState();
+  if (canvas && screenshotDataUrl) {
     redrawCanvas();
   }
 });
@@ -715,12 +783,157 @@ function resetEditor() {
   isCropMode = false;
   cropSelection = null;
   originalImageData = null;
+  exitFilterMode();
   document.querySelector('.capture-section').classList.remove('hidden');
   editorSection.classList.add('hidden');
   
   if (canvas) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
+}
+
+function enterFilterMode() {
+  isFilterMode = true;
+  filterSelection = null;
+  filterSelecting = false;
+  filterApplyBtn.classList.remove('hidden');
+  filterClearBtn.classList.remove('hidden');
+  updateFilterControlsState();
+  if (canvas && screenshotDataUrl) {
+    redrawCanvas();
+  }
+}
+
+function exitFilterMode() {
+  if (!isFilterMode && !filterSelection) {
+    return;
+  }
+  isFilterMode = false;
+  filterSelection = null;
+  filterSelecting = false;
+  filterApplyBtn.classList.add('hidden');
+  filterClearBtn.classList.add('hidden');
+  filterApplyBtn.disabled = false;
+  filterClearBtn.disabled = false;
+  if (canvas && screenshotDataUrl) {
+    redrawCanvas();
+  }
+}
+
+function updateFilterControlsState() {
+  const hasSelection = Boolean(
+    filterSelection &&
+    filterSelection.width > 2 &&
+    filterSelection.height > 2
+  );
+  filterApplyBtn.disabled = !hasSelection;
+  filterClearBtn.disabled = !hasSelection;
+}
+
+function beginFilterSelection(e) {
+  if (!canvas) {
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  filterSelecting = true;
+  filterDragStart = {
+    x: clampToCanvas(x),
+    y: clampToCanvas(y, true)
+  };
+  filterSelection = {
+    x: filterDragStart.x,
+    y: filterDragStart.y,
+    width: 0,
+    height: 0
+  };
+
+  updateFilterControlsState();
+  redrawCanvas();
+}
+
+function updateFilterSelection(e) {
+  if (!filterSelecting || !filterSelection || !canvas) {
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const currentX = e.clientX - rect.left;
+  const currentY = e.clientY - rect.top;
+
+  const startX = clampToCanvas(filterDragStart.x);
+  const startY = clampToCanvas(filterDragStart.y, true);
+  const endX = clampToCanvas(currentX);
+  const endY = clampToCanvas(currentY, true);
+
+  filterSelection = normalizeSelection(startX, startY, endX, endY);
+
+  updateFilterControlsState();
+  redrawCanvas();
+}
+
+function finalizeFilterSelection(e) {
+  if (!filterSelecting || !canvas) {
+    return;
+  }
+
+  let currentX = filterDragStart.x;
+  let currentY = filterDragStart.y;
+
+  if (e) {
+    const rect = canvas.getBoundingClientRect();
+    currentX = e.clientX - rect.left;
+    currentY = e.clientY - rect.top;
+  }
+
+  const startX = clampToCanvas(filterDragStart.x);
+  const startY = clampToCanvas(filterDragStart.y, true);
+  const endX = clampToCanvas(currentX);
+  const endY = clampToCanvas(currentY, true);
+
+  filterSelection = normalizeSelection(startX, startY, endX, endY);
+  filterSelecting = false;
+
+  updateFilterControlsState();
+  redrawCanvas();
+}
+
+function drawFilterSelectionOverlay(selection, isPreview = false) {
+  if (!selection || selection.width <= 0 || selection.height <= 0) {
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 193, 7, 0.18)';
+  ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
+
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#ff9800';
+  ctx.setLineDash(isPreview ? [4, 3] : [6, 4]);
+  ctx.strokeRect(selection.x, selection.y, selection.width, selection.height);
+  ctx.setLineDash([]);
+
+  ctx.restore();
+}
+
+function clampToCanvas(value, isY = false) {
+  if (!canvas) {
+    return 0;
+  }
+  const limit = isY ? canvas.height : canvas.width;
+  const numeric = Number.isFinite(value) ? value : 0;
+  return Math.max(0, Math.min(numeric, limit));
+}
+
+function normalizeSelection(startX, startY, endX, endY) {
+  const x = Math.min(startX, endX);
+  const y = Math.min(startY, endY);
+  const width = Math.abs(endX - startX);
+  const height = Math.abs(endY - startY);
+  return { x, y, width, height };
 }
 
 // Crop functionality
@@ -976,17 +1189,27 @@ applyCropBtn.addEventListener('click', () => {
     return;
   }
   
+  // Restore the base image so crop data excludes the overlay guides
+  if (originalImageData) {
+    ctx.putImageData(originalImageData, 0, 0);
+  }
+
   // Create new canvas with cropped area
+  const selectionX = Math.round(cropSelection.x);
+  const selectionY = Math.round(cropSelection.y);
+  const selectionWidth = Math.round(cropSelection.width);
+  const selectionHeight = Math.round(cropSelection.height);
+
   const croppedImageData = ctx.getImageData(
-    Math.round(cropSelection.x),
-    Math.round(cropSelection.y),
-    Math.round(cropSelection.width),
-    Math.round(cropSelection.height)
+    selectionX,
+    selectionY,
+    selectionWidth,
+    selectionHeight
   );
   
   // Resize canvas
-  canvas.width = Math.round(cropSelection.width);
-  canvas.height = Math.round(cropSelection.height);
+  canvas.width = selectionWidth;
+  canvas.height = selectionHeight;
   
   // Draw cropped image
   ctx.putImageData(croppedImageData, 0, 0);
