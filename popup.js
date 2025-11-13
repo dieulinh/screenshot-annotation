@@ -1189,17 +1189,27 @@ applyCropBtn.addEventListener('click', () => {
     return;
   }
   
+  // Restore the base image so crop data excludes the overlay guides
+  if (originalImageData) {
+    ctx.putImageData(originalImageData, 0, 0);
+  }
+
   // Create new canvas with cropped area
+  const selectionX = Math.round(cropSelection.x);
+  const selectionY = Math.round(cropSelection.y);
+  const selectionWidth = Math.round(cropSelection.width);
+  const selectionHeight = Math.round(cropSelection.height);
+
   const croppedImageData = ctx.getImageData(
-    Math.round(cropSelection.x),
-    Math.round(cropSelection.y),
-    Math.round(cropSelection.width),
-    Math.round(cropSelection.height)
+    selectionX,
+    selectionY,
+    selectionWidth,
+    selectionHeight
   );
   
   // Resize canvas
-  canvas.width = Math.round(cropSelection.width);
-  canvas.height = Math.round(cropSelection.height);
+  canvas.width = selectionWidth;
+  canvas.height = selectionHeight;
   
   // Draw cropped image
   ctx.putImageData(croppedImageData, 0, 0);
