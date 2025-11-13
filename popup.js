@@ -14,6 +14,7 @@ const captureBtn = document.getElementById('captureBtn');
 const arrowTool = document.getElementById('arrowTool');
 const textTool = document.getElementById('textTool');
 const highlightTool = document.getElementById('highlightTool');
+const markerTool = document.getElementById('markerTool');
 const rectangleTool = document.getElementById('rectangleTool');
 const blurTool = document.getElementById('blurTool');
 const cropTool = document.getElementById('cropTool');
@@ -70,7 +71,7 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, textTool, highlightTool, rectangleTool, blurTool, cropTool].forEach(btn => {
+[arrowTool, textTool, highlightTool, markerTool, rectangleTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -138,6 +139,10 @@ function startDrawing(e) {
     startX,
     startY
   };
+
+  if (currentTool === 'marker') {
+    currentAnnotation.points = [{ x: startX, y: startY }];
+  }
 }
 
 function draw(e) {
@@ -151,6 +156,13 @@ function draw(e) {
   const rect = canvas.getBoundingClientRect();
   const currentX = e.clientX - rect.left;
   const currentY = e.clientY - rect.top;
+
+  if (currentAnnotation?.tool === 'marker') {
+    currentAnnotation.points.push({ x: currentX, y: currentY });
+    redrawCanvas();
+    drawAnnotation(currentAnnotation);
+    return;
+  }
   
   // Redraw everything
   redrawCanvas();
@@ -174,6 +186,15 @@ function stopDrawing(e) {
   const rect = canvas.getBoundingClientRect();
   const endX = e.clientX - rect.left;
   const endY = e.clientY - rect.top;
+
+  if (currentAnnotation?.tool === 'marker') {
+    currentAnnotation.points.push({ x: endX, y: endY });
+    annotations.push(currentAnnotation);
+    currentAnnotation = null;
+    isDrawing = false;
+    redrawCanvas();
+    return;
+  }
   
   currentAnnotation.endX = endX;
   currentAnnotation.endY = endY;
@@ -196,6 +217,35 @@ function drawAnnotation(annotation) {
     case 'arrow':
       drawArrow(annotation.startX, annotation.startY, annotation.endX, annotation.endY);
       break;
+    case 'marker': {
+      const prevAlpha = ctx.globalAlpha;
+      const points = annotation.points || [];
+      if (!points.length) {
+        break;
+      }
+
+      ctx.globalAlpha = 0.85;
+
+      if (points.length === 1) {
+        ctx.beginPath();
+        ctx.arc(points[0].x, points[0].y, annotation.lineWidth / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length - 1; i++) {
+          const midX = (points[i].x + points[i + 1].x) / 2;
+          const midY = (points[i].y + points[i + 1].y) / 2;
+          ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+        }
+        const lastPoint = points[points.length - 1];
+        ctx.lineTo(lastPoint.x, lastPoint.y);
+        ctx.stroke();
+      }
+
+      ctx.globalAlpha = prevAlpha;
+      break;
+    }
     case 'highlight':
       ctx.globalAlpha = 0.3;
       ctx.fillRect(
