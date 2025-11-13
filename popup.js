@@ -15,12 +15,14 @@ const arrowTool = document.getElementById('arrowTool');
 const textTool = document.getElementById('textTool');
 const highlightTool = document.getElementById('highlightTool');
 const markerTool = document.getElementById('markerTool');
+const filterTool = document.getElementById('filterTool');
 const rectangleTool = document.getElementById('rectangleTool');
 const blurTool = document.getElementById('blurTool');
 const cropTool = document.getElementById('cropTool');
 const colorPicker = document.getElementById('colorPicker');
 const lineWidth = document.getElementById('lineWidth');
 const blurIntensity = document.getElementById('blurIntensity');
+const filterType = document.getElementById('filterType');
 const undoBtn = document.getElementById('undoBtn');
 const clearBtn = document.getElementById('clearBtn');
 const applyCropBtn = document.getElementById('applyCropBtn');
@@ -71,29 +73,28 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, textTool, highlightTool, markerTool, rectangleTool, blurTool, cropTool].forEach(btn => {
+[arrowTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentTool = btn.id.replace('Tool', '');
     
     // Handle crop mode
-    if (currentTool === 'crop') {
-      enterCropMode();
-    } else {
-      exitCropMode();
-    }
-    
-    // Show/hide blur intensity selector
-    if (currentTool === 'blur') {
-      blurIntensity.classList.remove('hidden');
-      colorPicker.classList.add('hidden');
-      lineWidth.classList.add('hidden');
-    } else {
-      blurIntensity.classList.add('hidden');
-      colorPicker.classList.remove('hidden');
-      lineWidth.classList.remove('hidden');
-    }
+      if (currentTool === 'crop') {
+        enterCropMode();
+      } else {
+        exitCropMode();
+      }
+
+      const showBlurControls = currentTool === 'blur';
+      blurIntensity.classList.toggle('hidden', !showBlurControls);
+
+      const showFilterControls = currentTool === 'filter';
+      filterType.classList.toggle('hidden', !showFilterControls);
+
+      const showColorAndWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop';
+      colorPicker.classList.toggle('hidden', !showColorAndWidth);
+      lineWidth.classList.toggle('hidden', !showColorAndWidth);
   });
 });
 
@@ -136,6 +137,7 @@ function startDrawing(e) {
     color: colorPicker.value,
     lineWidth: parseInt(lineWidth.value),
     blurIntensity: parseInt(blurIntensity.value),
+    filterType: filterType.value,
     startX,
     startY
   };
@@ -246,6 +248,15 @@ function drawAnnotation(annotation) {
       ctx.globalAlpha = prevAlpha;
       break;
     }
+    case 'filter':
+      applyFilterEffect(
+        annotation.startX,
+        annotation.startY,
+        annotation.endX,
+        annotation.endY,
+        annotation.filterType
+      );
+      break;
     case 'highlight':
       ctx.globalAlpha = 0.3;
       ctx.fillRect(
@@ -353,6 +364,262 @@ function applyPixelatedBlur(x1, y1, x2, y2, pixelSize) {
   
   // Put the blurred image data back
   ctx.putImageData(imageData, startX, startY);
+}
+
+function applyFilterEffect(x1, y1, x2, y2, effect = 'grayscale') {
+  if (!canvas || typeof x1 !== 'number' || typeof y1 !== 'number' || typeof x2 !== 'number' || typeof y2 !== 'number') {
+    return;
+  }
+
+  let startX = Math.min(x1, x2);
+  let startY = Math.min(y1, y2);
+  let endX = Math.max(x1, x2);
+  let endY = Math.max(y1, y2);
+
+  startX = Math.max(0, Math.min(startX, canvas.width));
+  startY = Math.max(0, Math.min(startY, canvas.height));
+  endX = Math.max(0, Math.min(endX, canvas.width));
+  endY = Math.max(0, Math.min(endY, canvas.height));
+
+  const originX = Math.floor(startX);
+  const originY = Math.floor(startY);
+  const rawWidth = Math.ceil(endX) - originX;
+  const rawHeight = Math.ceil(endY) - originY;
+
+  if (rawWidth < 1 || rawHeight < 1) {
+    return;
+  }
+
+  const width = Math.min(rawWidth, canvas.width - originX);
+  const height = Math.min(rawHeight, canvas.height - originY);
+
+  if (width < 1 || height < 1) {
+    return;
+  }
+
+  let imageData;
+  try {
+    imageData = ctx.getImageData(originX, originY, width, height);
+  } catch (error) {
+    console.error('Unable to read image data for filter:', error);
+    return;
+  }
+
+  const data = imageData.data;
+  const mode = effect || 'grayscale';
+
+  for (let i = 0; i < data.length; i += 4) {
+    let r = data[i];
+    let g = data[i + 1];
+    let b = data[i + 2];
+
+    switch (mode) {
+      case 'sepia': {
+        const sepiaR = 0.393 * r + 0.769 * g + 0.189 * b;
+        const sepiaG = 0.349 * r + 0.686 * g + 0.168 * b;
+        const sepiaB = 0.272 * r + 0.534 * g + 0.131 * b;
+        r = sepiaR;
+        g = sepiaG;
+        b = sepiaB;
+        break;
+      }
+      case 'invert':
+        r = 255 - r;
+        g = 255 - g;
+        b = 255 - b;
+        break;
+      case 'brightness':
+        r += 35;
+        g += 35;
+        b += 35;
+        break;
+      case 'contrast': {
+        const contrastLevel = 40;
+        const factor = (259 * (contrastLevel + 255)) / (255 * (259 - contrastLevel));
+        r = factor * (r - 128) + 128;
+        g = factor * (g - 128) + 128;
+        b = factor * (b - 128) + 128;
+        break;
+      }
+      case 'saturation': {
+        const { h, s, l } = rgbToHsl(r, g, b);
+        const boosted = Math.min(1, s * 1.35);
+        const saturated = hslToRgb(h, boosted, l);
+        r = saturated.r;
+        g = saturated.g;
+        b = saturated.b;
+        break;
+      }
+      case 'vintage': {
+        const { h, s, l } = rgbToHsl(r, g, b);
+        const warmHue = (h + 0.04) % 1;
+        const toned = hslToRgb(
+          warmHue,
+          Math.min(1, s * 0.55 + 0.1),
+          Math.min(1, l * 1.05 + 0.03)
+        );
+        r = toned.r + 12;
+        g = toned.g + 5;
+        b = toned.b - 12;
+        break;
+      }
+      case 'romantic': {
+        const baseHsl = rgbToHsl(r, g, b);
+        const target = hslToRgb(
+          0.95,
+          Math.min(1, baseHsl.s * 0.5 + 0.35),
+          Math.min(1, baseHsl.l * 1.12 + 0.04)
+        );
+        const blend = 0.4;
+        r = r * (1 - blend) + target.r * blend;
+        g = g * (1 - blend) + target.g * blend;
+        b = b * (1 - blend) + target.b * blend;
+        break;
+      }
+      case 'lrWarm': {
+        const { h, s, l } = rgbToHsl(r, g, b);
+        const warmHue = (h + 0.015) % 1;
+        const liftedHighlights = clamp01(l + Math.max(0, l - 0.55) * 0.35);
+        const loweredShadows = clamp01(liftedHighlights - Math.max(0, 0.45 - l) * 0.18);
+        const richerSat = clamp01(s * 1.15 + 0.05);
+        const toned = hslToRgb(warmHue, richerSat, loweredShadows);
+        r = toned.r + 6;
+        g = toned.g + 3;
+        b = toned.b - 6;
+        break;
+      }
+      case 'lrCool': {
+        const { h, s, l } = rgbToHsl(r, g, b);
+        const coolHue = (h + 0.97) % 1;
+        const contrastBoost = clamp01((l - 0.5) * 1.25 + 0.5);
+        const reducedSat = clamp01(s * 0.9 + 0.02);
+        const toned = hslToRgb(coolHue, reducedSat, contrastBoost);
+        r = toned.r - 4;
+        g = toned.g + 5;
+        b = toned.b + 8;
+        break;
+      }
+      case 'lrMatte': {
+        const { h, s, l } = rgbToHsl(r, g, b);
+        const fadedShadows = clamp01(0.12 + l * 0.78);
+        const softSat = clamp01(s * 0.75 + 0.03);
+        const toned = hslToRgb(h, softSat, fadedShadows);
+        const matteBlend = 0.2;
+        r = toned.r * (1 - matteBlend) + 220 * matteBlend;
+        g = toned.g * (1 - matteBlend) + 215 * matteBlend;
+        b = toned.b * (1 - matteBlend) + 210 * matteBlend;
+        break;
+      }
+      case 'clarendon': {
+        const { h, s, l } = rgbToHsl(r, g, b);
+        const contrastL = clamp01((l - 0.5) * 1.25 + 0.5);
+        const boostedSat = clamp01(s * 1.2 + 0.05);
+        const coolHighlightsHue = (h + 0.98) % 1;
+        const toned = hslToRgb(coolHighlightsHue, boostedSat, contrastL);
+
+        const highlightBoost = clamp01(l + 0.08);
+        const highlightRgb = hslToRgb(coolHighlightsHue, boostedSat * 0.8, highlightBoost);
+
+        const blend = 0.35;
+        r = toned.r * (1 - blend) + highlightRgb.r * blend + 6;
+        g = toned.g * (1 - blend) + highlightRgb.g * blend + 2;
+        b = toned.b * (1 - blend) + highlightRgb.b * blend + 10;
+        break;
+      }
+      case 'grayscale':
+      default: {
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = gray;
+        g = gray;
+        b = gray;
+        break;
+      }
+    }
+
+    data[i] = clampChannel(r);
+    data[i + 1] = clampChannel(g);
+    data[i + 2] = clampChannel(b);
+  }
+
+  ctx.putImageData(imageData, originX, originY);
+}
+
+function clampChannel(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function clamp01(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(1, value));
+}
+
+function rgbToHsl(r, g, b) {
+  const rNorm = r / 255;
+  const gNorm = g / 255;
+  const bNorm = b / 255;
+
+  const max = Math.max(rNorm, gNorm, bNorm);
+  const min = Math.min(rNorm, gNorm, bNorm);
+  const delta = max - min;
+
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (delta !== 0) {
+    s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+
+    switch (max) {
+      case rNorm:
+        h = (gNorm - bNorm) / delta + (gNorm < bNorm ? 6 : 0);
+        break;
+      case gNorm:
+        h = (bNorm - rNorm) / delta + 2;
+        break;
+      case bNorm:
+        h = (rNorm - gNorm) / delta + 4;
+        break;
+    }
+
+    h /= 6;
+  }
+
+  return { h, s, l };
+}
+
+function hslToRgb(h, s, l) {
+  if (s === 0) {
+    const gray = clampChannel(l * 255);
+    return { r: gray, g: gray, b: gray };
+  }
+
+  const hueToRgb = (p, q, t) => {
+    let temp = t;
+    if (temp < 0) temp += 1;
+    if (temp > 1) temp -= 1;
+    if (temp < 1 / 6) return p + (q - p) * 6 * temp;
+    if (temp < 1 / 2) return q;
+    if (temp < 2 / 3) return p + (q - p) * (2 / 3 - temp) * 6;
+    return p;
+  };
+
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+
+  const r = hueToRgb(p, q, h + 1 / 3);
+  const g = hueToRgb(p, q, h);
+  const b = hueToRgb(p, q, h - 1 / 3);
+
+  return {
+    r: clampChannel(r * 255),
+    g: clampChannel(g * 255),
+    b: clampChannel(b * 255)
+  };
 }
 
 function addTextAnnotation(x, y) {
