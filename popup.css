@@ -303,6 +303,7 @@ h2 {
   padding: 5px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
+  --pointer-offset: 16px;
 }
 
 .text-input-overlay input {
@@ -311,6 +312,31 @@ h2 {
   font-size: 16px;
   padding: 5px;
   min-width: 200px;
+}
+
+.text-input-overlay::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-left: 2px solid #667eea;
+  border-top: 2px solid #667eea;
+  transform: rotate(45deg);
+  top: -8px;
+  left: var(--pointer-offset);
+}
+
+.text-input-overlay textarea {
+  border: none;
+  outline: none;
+  font-size: 16px;
+  line-height: 1.4;
+  padding: 5px;
+  min-width: 220px;
+  min-height: 70px;
+  resize: vertical;
+  font-family: inherit;
 }
 
 /* Resize handle indicator */

@@ -12,12 +12,19 @@ let isFilterMode = false;
 let filterSelection = null;
 let filterSelecting = false;
 let filterDragStart = { x: 0, y: 0 };
+let pendingTextAnnotation = null;
+let textInputOverlay = null;
+let textInputField = null;
+let isTextModeActive = false;
+let textOverlayScrollHandler = null;
 
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
 const arrowTool = document.getElementById('arrowTool');
 const lineTool = document.getElementById('lineTool');
 const textTool = document.getElementById('textTool');
+const textApplyBtn = document.getElementById('textApplyBtn');
+const textCancelBtn = document.getElementById('textCancelBtn');
 const highlightTool = document.getElementById('highlightTool');
 const markerTool = document.getElementById('markerTool');
 const filterTool = document.getElementById('filterTool');
@@ -100,6 +107,12 @@ function loadScreenshotToCanvas(dataUrl) {
       exitFilterMode();
     }
 
+    if (currentTool === 'text') {
+      enterTextMode();
+    } else {
+      exitTextMode();
+    }
+
     const showBlurControls = currentTool === 'blur';
     blurIntensity.classList.toggle('hidden', !showBlurControls);
 
@@ -148,7 +161,7 @@ function startDrawing(e) {
   startY = e.clientY - rect.top;
   
   if (currentTool === 'text') {
-    addTextAnnotation(startX, startY);
+    showTextInputOverlay(startX, startY);
     return;
   }
   
@@ -679,20 +692,24 @@ function hslToRgb(h, s, l) {
   };
 }
 
-function addTextAnnotation(x, y) {
-  const text = prompt('Enter text:');
-  if (text && text.trim()) {
-    annotations.push({
-      tool: 'text',
-      color: colorPicker.value,
-      lineWidth: parseInt(lineWidth.value),
-      blurIntensity: parseInt(blurIntensity.value),
-      startX: x,
-      startY: y,
-      text: text
-    });
-    redrawCanvas();
+function addTextAnnotation(x, y, text, size, color) {
+  const value = typeof text === 'string' ? text.trim() : '';
+  if (!value) {
+    return;
   }
+
+  const lineSize = Number.isFinite(size) ? size : parseInt(lineWidth.value, 10) || 3;
+  const fillColor = color || colorPicker.value;
+
+  annotations.push({
+    tool: 'text',
+    color: fillColor,
+    lineWidth: lineSize,
+    blurIntensity: parseInt(blurIntensity.value, 10),
+    startX: x,
+    startY: y,
+    text: value
+  });
 }
 
 function redrawCanvas() {
@@ -768,6 +785,9 @@ filterClearBtn.addEventListener('click', () => {
   }
 });
 
+textApplyBtn.addEventListener('click', applyPendingTextAnnotation);
+textCancelBtn.addEventListener('click', cancelPendingTextAnnotation);
+
 // Save screenshot
 saveBtn.addEventListener('click', () => {
   const folderName = folderNameInput.value.trim() || 'screenshots';
@@ -812,6 +832,7 @@ function resetEditor() {
   cropSelection = null;
   originalImageData = null;
   exitFilterMode();
+  exitTextMode();
   document.querySelector('.capture-section').classList.remove('hidden');
   editorSection.classList.add('hidden');
   
@@ -845,6 +866,197 @@ function exitFilterMode() {
   filterClearBtn.disabled = false;
   if (canvas && screenshotDataUrl) {
     redrawCanvas();
+  }
+}
+
+function enterTextMode() {
+  if (isTextModeActive) {
+    updateTextControlsState();
+    return;
+  }
+
+  isTextModeActive = true;
+  textApplyBtn.classList.remove('hidden');
+  textCancelBtn.classList.remove('hidden');
+  textApplyBtn.disabled = true;
+  textCancelBtn.disabled = true;
+  updateTextControlsState();
+}
+
+function exitTextMode() {
+  if (!isTextModeActive && !pendingTextAnnotation && !textInputOverlay) {
+    return;
+  }
+
+  isTextModeActive = false;
+  hideTextInputOverlay();
+  textApplyBtn.classList.add('hidden');
+  textCancelBtn.classList.add('hidden');
+  textApplyBtn.disabled = true;
+  textCancelBtn.disabled = true;
+  updateTextControlsState();
+}
+
+function updateTextControlsState() {
+  const hasPending = Boolean(pendingTextAnnotation && textInputField && textInputOverlay);
+  const hasText = hasPending && textInputField.value.trim().length > 0;
+
+  textApplyBtn.disabled = !hasText;
+  textCancelBtn.disabled = !hasPending;
+
+  if (canvas) {
+    canvas.style.cursor = isTextModeActive ? 'text' : '';
+  }
+}
+
+function showTextInputOverlay(x, y) {
+  if (!canvas) {
+    return;
+  }
+
+  const container = canvas.parentElement;
+  if (!container) {
+    return;
+  }
+
+  if (!isTextModeActive) {
+    enterTextMode();
+  }
+
+  hideTextInputOverlay();
+
+  textInputOverlay = document.createElement('div');
+  textInputOverlay.className = 'text-input-overlay';
+
+  textInputField = document.createElement('textarea');
+  textInputField.placeholder = 'Type your text...';
+  textInputField.rows = 3;
+  textInputOverlay.appendChild(textInputField);
+
+  container.appendChild(textInputOverlay);
+
+  pendingTextAnnotation = {
+    x,
+    y
+  };
+
+  textInputField.addEventListener('keydown', handleTextInputKeydown);
+  textInputField.addEventListener('input', updateTextControlsState);
+
+  textOverlayScrollHandler = () => {
+    positionTextOverlay(pendingTextAnnotation.x, pendingTextAnnotation.y);
+  };
+  container.addEventListener('scroll', textOverlayScrollHandler);
+
+  updateTextControlsState();
+
+  requestAnimationFrame(() => {
+    positionTextOverlay(pendingTextAnnotation.x, pendingTextAnnotation.y);
+    updateTextControlsState();
+    textInputField.focus();
+    textInputField.select();
+  });
+}
+
+function positionTextOverlay(x, y) {
+  if (!canvas || !textInputOverlay) {
+    return;
+  }
+
+  const container = canvas.parentElement;
+  if (!container) {
+    return;
+  }
+
+  const targetLeft = canvas.offsetLeft - container.scrollLeft + x;
+  const targetTop = canvas.offsetTop - container.scrollTop + y;
+
+  const padding = 12;
+  const overlayWidth = textInputOverlay.offsetWidth || 0;
+  const overlayHeight = textInputOverlay.offsetHeight || 0;
+
+  let left = targetLeft;
+  let top = targetTop;
+
+  const maxLeft = container.clientWidth - overlayWidth - padding;
+  const maxTop = container.clientHeight - overlayHeight - padding;
+
+  left = Math.max(padding, Math.min(left, Math.max(padding, maxLeft)));
+  top = Math.max(padding, Math.min(top, Math.max(padding, maxTop)));
+
+  textInputOverlay.style.left = `${left}px`;
+  textInputOverlay.style.top = `${top}px`;
+
+  const maxPointerOffset = Math.max(6, overlayWidth - 16);
+  const desiredOffset = targetLeft - left - 6;
+  const pointerOffset = Math.max(6, Math.min(maxPointerOffset, desiredOffset));
+  textInputOverlay.style.setProperty('--pointer-offset', `${pointerOffset}px`);
+}
+
+function hideTextInputOverlay() {
+  if (textInputField) {
+    textInputField.removeEventListener('keydown', handleTextInputKeydown);
+    textInputField.removeEventListener('input', updateTextControlsState);
+  }
+
+  if (canvas && textOverlayScrollHandler && canvas.parentElement) {
+    canvas.parentElement.removeEventListener('scroll', textOverlayScrollHandler);
+  }
+
+  if (textInputOverlay && textInputOverlay.parentElement) {
+    textInputOverlay.parentElement.removeChild(textInputOverlay);
+  }
+
+  textOverlayScrollHandler = null;
+  textInputOverlay = null;
+  textInputField = null;
+  pendingTextAnnotation = null;
+
+  textApplyBtn.disabled = true;
+  textCancelBtn.disabled = true;
+}
+
+function applyPendingTextAnnotation() {
+  if (!pendingTextAnnotation || !textInputField) {
+    alert('Click on the screenshot to choose where the text should go.');
+    return;
+  }
+
+  const value = textInputField.value.trim();
+  if (!value) {
+    alert('Enter text before clicking Done.');
+    textInputField.focus();
+    return;
+  }
+
+  addTextAnnotation(
+    pendingTextAnnotation.x,
+    pendingTextAnnotation.y,
+    value,
+    parseInt(lineWidth.value, 10) || 3,
+    colorPicker.value
+  );
+
+  hideTextInputOverlay();
+  updateTextControlsState();
+  redrawCanvas();
+}
+
+function cancelPendingTextAnnotation() {
+  if (!pendingTextAnnotation) {
+    return;
+  }
+  hideTextInputOverlay();
+  updateTextControlsState();
+}
+
+function handleTextInputKeydown(event) {
+  if ((event.key === 'Enter' && (event.metaKey || event.ctrlKey))) {
+    event.preventDefault();
+    applyPendingTextAnnotation();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    cancelPendingTextAnnotation();
   }
 }
 
