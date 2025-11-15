@@ -20,6 +20,13 @@ let textOverlayScrollHandler = null;
 let isDraggingImage = false;
 let draggedImageAnnotation = null;
 let dragOffset = { x: 0, y: 0 };
+let selectedImageAnnotation = null;
+let isResizingImage = false;
+let imageResizeHandle = null;
+let imageResizeStart = { x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 };
+const IMAGE_MIN_SIZE = 40;
+const IMAGE_HANDLE_SIZE = 12;
+const IMAGE_HANDLE_HIT_RANGE = 14;
 
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
@@ -155,6 +162,8 @@ function handleMouseLeave(e) {
     onCropMouseUp(e);
   } else if (isFilterMode && filterSelecting) {
     finalizeFilterSelection(e);
+  } else if (isResizingImage && selectedImageAnnotation) {
+    finalizeImageResize();
   } else if (isDraggingImage && draggedImageAnnotation) {
     finalizeImageDrag();
   } else if (isDrawing) {
@@ -182,8 +191,12 @@ function startDrawing(e) {
   startX = e.clientX - rect.left;
   startY = e.clientY - rect.top;
 
-  if (tryBeginImageDrag(startX, startY)) {
+  if (tryBeginImageInteraction(startX, startY)) {
     return;
+  }
+
+  if (selectedImageAnnotation) {
+    clearSelectedImageAnnotation();
   }
   
   if (currentTool === 'text' || currentTool === 'heading') {
@@ -221,12 +234,20 @@ function draw(e) {
   const currentX = e.clientX - rect.left;
   const currentY = e.clientY - rect.top;
 
+  if (isResizingImage && selectedImageAnnotation) {
+    updateImageResize(currentX, currentY);
+    return;
+  }
+
   if (isDraggingImage && draggedImageAnnotation) {
     updateDraggedImagePosition(currentX, currentY);
     return;
   }
 
-  if (!isDrawing) return;
+  if (!isDrawing) {
+    updateImageCursorState(currentX, currentY);
+    return;
+  }
 
   if (currentAnnotation?.tool === 'marker') {
     currentAnnotation.points.push({ x: currentX, y: currentY });
@@ -254,6 +275,11 @@ function stopDrawing(e) {
 
   if (isFilterMode && currentTool === 'filter') {
     finalizeFilterSelection(e);
+    return;
+  }
+
+  if (isResizingImage && selectedImageAnnotation) {
+    finalizeImageResize();
     return;
   }
 
@@ -462,8 +488,16 @@ function drawImageAnnotation(annotation) {
 
   ctx.drawImage(image, annotation.x, annotation.y, annotation.width, annotation.height);
 
-  if (annotation === draggedImageAnnotation && isDraggingImage) {
-    drawImageOutline(annotation, '#667eea');
+  const isActive = annotation === selectedImageAnnotation;
+  const isBeingDragged = annotation === draggedImageAnnotation && isDraggingImage;
+
+  if (isActive || isBeingDragged) {
+    const outlineColor = isBeingDragged ? '#667eea' : '#4c51bf';
+    drawImageOutline(annotation, outlineColor);
+  }
+
+  if (isActive) {
+    drawImageResizeHandles(annotation);
   }
 }
 
@@ -474,6 +508,235 @@ function drawImageOutline(annotation, color) {
   ctx.setLineDash([6, 4]);
   ctx.strokeRect(annotation.x, annotation.y, annotation.width, annotation.height);
   ctx.restore();
+}
+
+function drawImageResizeHandles(annotation) {
+  if (!annotation) {
+    return;
+  }
+
+  const handles = getImageHandlePositions(annotation);
+  if (!handles.length) {
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = '#667eea';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+
+  handles.forEach(({ x, y }) => {
+    ctx.beginPath();
+    ctx.rect(
+      x - IMAGE_HANDLE_SIZE / 2,
+      y - IMAGE_HANDLE_SIZE / 2,
+      IMAGE_HANDLE_SIZE,
+      IMAGE_HANDLE_SIZE
+    );
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  ctx.restore();
+}
+
+function getImageHandlePositions(annotation) {
+  if (!annotation) {
+    return [];
+  }
+
+  const right = annotation.x + annotation.width;
+  const bottom = annotation.y + annotation.height;
+
+  return [
+    { handle: 'nw', x: annotation.x, y: annotation.y },
+    { handle: 'ne', x: right, y: annotation.y },
+    { handle: 'sw', x: annotation.x, y: bottom },
+    { handle: 'se', x: right, y: bottom }
+  ];
+}
+
+function getImageHandleAt(annotation, x, y) {
+  if (!annotation) {
+    return null;
+  }
+
+  const handles = getImageHandlePositions(annotation);
+  for (const handle of handles) {
+    if (
+      Math.abs(x - handle.x) <= IMAGE_HANDLE_HIT_RANGE &&
+      Math.abs(y - handle.y) <= IMAGE_HANDLE_HIT_RANGE
+    ) {
+      return handle.handle;
+    }
+  }
+  return null;
+}
+
+function cursorForImageHandle(handle) {
+  switch (handle) {
+    case 'nw':
+    case 'se':
+      return 'nwse-resize';
+    case 'ne':
+    case 'sw':
+      return 'nesw-resize';
+    default:
+      return 'default';
+  }
+}
+
+function beginImageDrag(annotation, x, y) {
+  draggedImageAnnotation = annotation;
+  dragOffset.x = x - annotation.x;
+  dragOffset.y = y - annotation.y;
+  isDraggingImage = true;
+  isResizingImage = false;
+  imageResizeHandle = null;
+  if (canvas) {
+    canvas.style.cursor = 'grabbing';
+  }
+}
+
+function beginImageResize(annotation, handle, cursorX, cursorY) {
+  if (!canvas) {
+    return;
+  }
+  isResizingImage = true;
+  imageResizeHandle = handle;
+  isDraggingImage = false;
+  draggedImageAnnotation = null;
+  imageResizeStart = {
+    x: annotation.x,
+    y: annotation.y,
+    width: annotation.width,
+    height: annotation.height,
+    mouseX: cursorX,
+    mouseY: cursorY
+  };
+  canvas.style.cursor = cursorForImageHandle(handle);
+}
+
+function updateImageResize(cursorX, cursorY) {
+  if (!isResizingImage || !selectedImageAnnotation || !canvas) {
+    return;
+  }
+
+  const annotation = selectedImageAnnotation;
+  const { x, y, width, height, mouseX, mouseY } = imageResizeStart;
+  const deltaX = cursorX - mouseX;
+  const deltaY = cursorY - mouseY;
+  const rightEdge = x + width;
+  const bottomEdge = y + height;
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
+
+  let newX = x;
+  let newY = y;
+  let newWidth = width;
+  let newHeight = height;
+
+  switch (imageResizeHandle) {
+    case 'nw':
+      newX = clampNumber(x + deltaX, 0, rightEdge - IMAGE_MIN_SIZE);
+      newY = clampNumber(y + deltaY, 0, bottomEdge - IMAGE_MIN_SIZE);
+      newWidth = rightEdge - newX;
+      newHeight = bottomEdge - newY;
+      break;
+    case 'ne':
+      newY = clampNumber(y + deltaY, 0, bottomEdge - IMAGE_MIN_SIZE);
+      newWidth = clampNumber(width + deltaX, IMAGE_MIN_SIZE, canvasWidth - x);
+      newHeight = bottomEdge - newY;
+      break;
+    case 'sw':
+      newX = clampNumber(x + deltaX, 0, rightEdge - IMAGE_MIN_SIZE);
+      newWidth = rightEdge - newX;
+      newHeight = clampNumber(height + deltaY, IMAGE_MIN_SIZE, canvasHeight - y);
+      break;
+    case 'se':
+    default:
+      newWidth = clampNumber(width + deltaX, IMAGE_MIN_SIZE, canvasWidth - x);
+      newHeight = clampNumber(height + deltaY, IMAGE_MIN_SIZE, canvasHeight - y);
+      break;
+  }
+
+  annotation.x = Math.round(newX);
+  annotation.y = Math.round(newY);
+  annotation.width = Math.round(newWidth);
+  annotation.height = Math.round(newHeight);
+
+  redrawCanvas();
+}
+
+function finalizeImageResize() {
+  if (!isResizingImage) {
+    return;
+  }
+
+  isResizingImage = false;
+  imageResizeHandle = null;
+  imageResizeStart = { x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 };
+
+  if (canvas) {
+    if (selectedImageAnnotation) {
+      canvas.style.cursor = 'grab';
+    } else {
+      canvas.style.cursor = '';
+    }
+  }
+
+  redrawCanvas();
+}
+
+function clearSelectedImageAnnotation() {
+  if (!selectedImageAnnotation) {
+    return;
+  }
+
+  selectedImageAnnotation = null;
+  isResizingImage = false;
+  imageResizeHandle = null;
+  imageResizeStart = { x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 };
+
+  if (canvas && !isDraggingImage && !isResizingImage) {
+    canvas.style.cursor = '';
+    redrawCanvas();
+  }
+}
+
+function updateImageCursorState(x, y) {
+  if (!canvas || isCropMode || (isFilterMode && currentTool === 'filter') || textInputMode) {
+    return;
+  }
+
+  if (!selectedImageAnnotation) {
+    canvas.style.cursor = '';
+    return;
+  }
+
+  const handle = getImageHandleAt(selectedImageAnnotation, x, y);
+  if (handle) {
+    canvas.style.cursor = cursorForImageHandle(handle);
+    return;
+  }
+
+  if (pointInsideImage(selectedImageAnnotation, x, y)) {
+    canvas.style.cursor = isDraggingImage ? 'grabbing' : 'grab';
+    return;
+  }
+
+  canvas.style.cursor = '';
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  if (Number.isFinite(max)) {
+    const adjustedMax = Math.max(min, max);
+    return Math.max(min, Math.min(value, adjustedMax));
+  }
+  return Math.max(min, value);
 }
 
 function applyPixelatedBlur(x1, y1, x2, y2, pixelSize) {
@@ -948,8 +1211,13 @@ function insertClipboardImage(dataUrl) {
   image.onload = () => {
     const annotation = buildImageAnnotation(image, dataUrl);
     annotations.push(annotation);
-    draggedImageAnnotation = annotation;
+    selectedImageAnnotation = annotation;
+    draggedImageAnnotation = null;
     isDraggingImage = false;
+    isResizingImage = false;
+    if (canvas) {
+      canvas.style.cursor = 'grab';
+    }
     redrawCanvas();
   };
   image.onerror = () => {
@@ -979,25 +1247,34 @@ function buildImageAnnotation(image, dataUrl) {
   };
 }
 
-function tryBeginImageDrag(x, y) {
+function tryBeginImageInteraction(x, y) {
   if (isCropMode || (isFilterMode && currentTool === 'filter')) {
     return false;
   }
 
   const hitResult = findTopmostImageAt(x, y);
   if (!hitResult) {
+    if (selectedImageAnnotation) {
+      clearSelectedImageAnnotation();
+    }
     return false;
   }
 
   const { annotation, index } = hitResult;
-  draggedImageAnnotation = annotation;
-  dragOffset.x = x - annotation.x;
-  dragOffset.y = y - annotation.y;
-  isDraggingImage = true;
+
+  selectedImageAnnotation = annotation;
 
   if (index !== annotations.length - 1) {
     annotations.splice(index, 1);
     annotations.push(annotation);
+  }
+
+  const handle = getImageHandleAt(annotation, x, y);
+
+  if (handle) {
+    beginImageResize(annotation, handle, x, y);
+  } else {
+    beginImageDrag(annotation, x, y);
   }
 
   redrawCanvas();
@@ -1029,6 +1306,8 @@ function updateDraggedImagePosition(cursorX, cursorY) {
     return;
   }
 
+  selectedImageAnnotation = draggedImageAnnotation;
+
   const targetX = cursorX - dragOffset.x;
   const targetY = cursorY - dragOffset.y;
   const { x, y } = clampImagePosition(targetX, targetY, draggedImageAnnotation.width, draggedImageAnnotation.height);
@@ -1050,9 +1329,19 @@ function clampImagePosition(x, y, width, height) {
 }
 
 function finalizeImageDrag() {
+  if (draggedImageAnnotation) {
+    selectedImageAnnotation = draggedImageAnnotation;
+  }
   isDraggingImage = false;
   draggedImageAnnotation = null;
   dragOffset = { x: 0, y: 0 };
+  if (canvas) {
+    if (selectedImageAnnotation) {
+      canvas.style.cursor = 'grab';
+    } else {
+      canvas.style.cursor = '';
+    }
+  }
   redrawCanvas();
 }
 
@@ -1082,7 +1371,16 @@ function redrawCanvas() {
 
 // Undo last annotation
 undoBtn.addEventListener('click', () => {
-  annotations.pop();
+  const removed = annotations.pop();
+  if (removed && removed === selectedImageAnnotation) {
+    selectedImageAnnotation = null;
+    isResizingImage = false;
+    imageResizeHandle = null;
+    imageResizeStart = { x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 };
+    if (canvas) {
+      canvas.style.cursor = '';
+    }
+  }
   redrawCanvas();
 });
 
@@ -1092,6 +1390,14 @@ clearBtn.addEventListener('click', () => {
     annotations = [];
     filterSelection = null;
     filterSelecting = false;
+    selectedImageAnnotation = null;
+    draggedImageAnnotation = null;
+    isDraggingImage = false;
+    isResizingImage = false;
+    imageResizeHandle = null;
+    if (canvas) {
+      canvas.style.cursor = '';
+    }
     updateFilterControlsState();
     redrawCanvas();
   }
@@ -1187,6 +1493,13 @@ function resetEditor() {
   isCropMode = false;
   cropSelection = null;
   originalImageData = null;
+  selectedImageAnnotation = null;
+  draggedImageAnnotation = null;
+  isDraggingImage = false;
+  dragOffset = { x: 0, y: 0 };
+  isResizingImage = false;
+  imageResizeHandle = null;
+  imageResizeStart = { x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 };
   exitFilterMode();
   exitTextMode();
   document.querySelector('.capture-section').classList.remove('hidden');
@@ -1194,11 +1507,15 @@ function resetEditor() {
   
   if (canvas) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.style.cursor = '';
   }
 }
 
 function enterFilterMode() {
   isFilterMode = true;
+  if (selectedImageAnnotation) {
+    clearSelectedImageAnnotation();
+  }
   filterSelection = null;
   filterSelecting = false;
   filterApplyBtn.classList.remove('hidden');
@@ -1584,6 +1901,9 @@ function normalizeSelection(startX, startY, endX, endY) {
 // Crop functionality
 function enterCropMode() {
   isCropMode = true;
+  if (selectedImageAnnotation) {
+    clearSelectedImageAnnotation();
+  }
   cropSelection = {
     x: canvas.width * 0.2,
     y: canvas.height * 0.2,
@@ -1865,6 +2185,12 @@ applyCropBtn.addEventListener('click', () => {
   // Clear annotations and original image data
   annotations = [];
   originalImageData = null;
+  selectedImageAnnotation = null;
+  isResizingImage = false;
+  imageResizeHandle = null;
+  draggedImageAnnotation = null;
+  isDraggingImage = false;
+  dragOffset = { x: 0, y: 0 };
   
   // Clear crop selection BEFORE exiting crop mode
   cropSelection = null;
