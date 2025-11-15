@@ -54,9 +54,19 @@
             <circle cx="10" cy="14" r="4" fill="currentColor" opacity="0.7"/>
           </svg>
         </button>
+        <button id="selectionTool" class="tool-btn" title="Select Region">
+          <svg width="20" height="20" viewBox="0 0 20 20">
+            <rect x="3" y="3" width="14" height="14" fill="none" stroke="currentColor" stroke-dasharray="3,2" stroke-width="2"/>
+          </svg>
+        </button>
         <button id="rectangleTool" class="tool-btn" title="Rectangle">
           <svg width="20" height="20" viewBox="0 0 20 20">
             <rect x="3" y="3" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"/>
+          </svg>
+        </button>
+        <button id="filledRectangleTool" class="tool-btn" title="Filled Rectangle">
+          <svg width="20" height="20" viewBox="0 0 20 20">
+            <rect x="3" y="3" width="14" height="14" fill="currentColor" opacity="0.85"/>
           </svg>
         </button>
         <button id="ellipseTool" class="tool-btn" title="Ellipse">
@@ -143,6 +153,8 @@
         </select>
         <button id="filterApplyBtn" class="tool-btn hidden" title="Apply Filter" style="background: #4CAF50; color: white;">✓ Filter</button>
         <button id="filterClearBtn" class="tool-btn hidden" title="Clear Selection" style="background: #f44336; color: white;">✗ Clear</button>
+        <button id="selectionCopyBtn" class="tool-btn hidden" title="Copy Selection" style="background: #4CAF50; color: white;">⧉ Copy</button>
+        <button id="selectionCutBtn" class="tool-btn hidden" title="Cut Selection" style="background: #f44336; color: white;">✂ Cut</button>
     <button id="textApplyBtn" class="tool-btn hidden" title="Place Text" style="background: #4CAF50; color: white;">✓ Done</button>
     <button id="textCancelBtn" class="tool-btn hidden" title="Cancel Text" style="background: #f44336; color: white;">✗ Cancel</button>
         

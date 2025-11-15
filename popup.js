@@ -27,6 +27,10 @@ let imageResizeStart = { x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 }
 const IMAGE_MIN_SIZE = 40;
 const IMAGE_HANDLE_SIZE = 12;
 const IMAGE_HANDLE_HIT_RANGE = 14;
+let isSelectionMode = false;
+let selectionRect = null;
+let selectionSelecting = false;
+let selectionDragStart = { x: 0, y: 0 };
 
 // Tool buttons
 const captureBtn = document.getElementById('captureBtn');
@@ -39,7 +43,9 @@ const textCancelBtn = document.getElementById('textCancelBtn');
 const highlightTool = document.getElementById('highlightTool');
 const markerTool = document.getElementById('markerTool');
 const filterTool = document.getElementById('filterTool');
+const selectionTool = document.getElementById('selectionTool');
 const rectangleTool = document.getElementById('rectangleTool');
+const filledRectangleTool = document.getElementById('filledRectangleTool');
 const ellipseTool = document.getElementById('ellipseTool');
 const blurTool = document.getElementById('blurTool');
 const cropTool = document.getElementById('cropTool');
@@ -51,6 +57,10 @@ const blurIntensity = document.getElementById('blurIntensity');
 const filterType = document.getElementById('filterType');
 const filterApplyBtn = document.getElementById('filterApplyBtn');
 const filterClearBtn = document.getElementById('filterClearBtn');
+const selectionCopyBtn = document.getElementById('selectionCopyBtn');
+const selectionCutBtn = document.getElementById('selectionCutBtn');
+selectionCopyBtn.disabled = true;
+selectionCutBtn.disabled = true;
 const undoBtn = document.getElementById('undoBtn');
 const clearBtn = document.getElementById('clearBtn');
 const applyCropBtn = document.getElementById('applyCropBtn');
@@ -103,7 +113,7 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, lineTool, headingTool, textTool, highlightTool, markerTool, filterTool, rectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
+[arrowTool, lineTool, headingTool, textTool, highlightTool, markerTool, filterTool, selectionTool, rectangleTool, filledRectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -122,6 +132,12 @@ function loadScreenshotToCanvas(dataUrl) {
       exitFilterMode();
     }
 
+    if (currentTool === 'selection') {
+      enterSelectionMode();
+    } else {
+      exitSelectionMode();
+    }
+
     if (currentTool === 'text') {
       enterTextMode('text');
     } else if (currentTool === 'heading') {
@@ -136,10 +152,10 @@ function loadScreenshotToCanvas(dataUrl) {
     const showFilterControls = currentTool === 'filter';
     filterType.classList.toggle('hidden', !showFilterControls);
 
-    const showColorPicker = !showBlurControls && !showFilterControls && currentTool !== 'crop';
+    const showColorPicker = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'selection';
     colorPicker.classList.toggle('hidden', !showColorPicker);
 
-    const showLineWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'heading';
+    const showLineWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'heading' && currentTool !== 'selection';
     lineWidth.classList.toggle('hidden', !showLineWidth);
 
     const showHeadingControls = currentTool === 'heading';
@@ -162,6 +178,8 @@ function handleMouseLeave(e) {
     onCropMouseUp(e);
   } else if (isFilterMode && filterSelecting) {
     finalizeFilterSelection(e);
+  } else if (isSelectionMode && selectionSelecting) {
+    finalizeSelectionRect(e);
   } else if (isResizingImage && selectedImageAnnotation) {
     finalizeImageResize();
   } else if (isDraggingImage && draggedImageAnnotation) {
@@ -184,6 +202,11 @@ function startDrawing(e) {
 
   if (isFilterMode && currentTool === 'filter') {
     beginFilterSelection(e);
+    return;
+  }
+
+  if (isSelectionMode && currentTool === 'selection') {
+    beginSelectionRect(e);
     return;
   }
   
@@ -228,6 +251,10 @@ function draw(e) {
 
   if (isFilterMode && currentTool === 'filter') {
     updateFilterSelection(e);
+    return;
+  }
+  if (isSelectionMode && currentTool === 'selection') {
+    updateSelectionRect(e);
     return;
   }
   const rect = canvas.getBoundingClientRect();
@@ -275,6 +302,11 @@ function stopDrawing(e) {
 
   if (isFilterMode && currentTool === 'filter') {
     finalizeFilterSelection(e);
+    return;
+  }
+
+  if (isSelectionMode && currentTool === 'selection') {
+    finalizeSelectionRect(e);
     return;
   }
 
@@ -383,6 +415,20 @@ function drawAnnotation(annotation) {
         annotation.endY - annotation.startY
       );
       break;
+    case 'filledRectangle': {
+      const width = annotation.endX - annotation.startX;
+      const height = annotation.endY - annotation.startY;
+      ctx.fillRect(annotation.startX, annotation.startY, width, height);
+      break;
+    }
+    case 'erase': {
+      const width = annotation.endX - annotation.startX;
+      const height = annotation.endY - annotation.startY;
+      if (width !== 0 && height !== 0) {
+        ctx.clearRect(annotation.startX, annotation.startY, width, height);
+      }
+      break;
+    }
     case 'ellipse': {
       const radiusX = Math.abs(annotation.endX - annotation.startX) / 2;
       const radiusY = Math.abs(annotation.endY - annotation.startY) / 2;
@@ -705,7 +751,7 @@ function clearSelectedImageAnnotation() {
 }
 
 function updateImageCursorState(x, y) {
-  if (!canvas || isCropMode || (isFilterMode && currentTool === 'filter') || textInputMode) {
+  if (!canvas || isCropMode || (isFilterMode && currentTool === 'filter') || textInputMode || isSelectionMode) {
     return;
   }
 
@@ -1248,7 +1294,7 @@ function buildImageAnnotation(image, dataUrl) {
 }
 
 function tryBeginImageInteraction(x, y) {
-  if (isCropMode || (isFilterMode && currentTool === 'filter')) {
+  if (isCropMode || (isFilterMode && currentTool === 'filter') || isSelectionMode) {
     return false;
   }
 
@@ -1345,28 +1391,67 @@ function finalizeImageDrag() {
   redrawCanvas();
 }
 
-function redrawCanvas() {
-  // Clear canvas and redraw screenshot
+function redrawCanvas(optionsOrCallback, callback) {
+  if (!canvas || !ctx) {
+    return;
+  }
+
+  let options = {};
+  let onComplete = callback;
+
+  if (typeof optionsOrCallback === 'function') {
+    onComplete = optionsOrCallback;
+  } else if (optionsOrCallback && typeof optionsOrCallback === 'object') {
+    options = optionsOrCallback;
+  }
+
+  const settings = {
+    drawCropOverlay: true,
+    drawFilterOverlay: true,
+    drawSelectionOverlay: true,
+    ...options
+  };
+
+  if (!screenshotDataUrl) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (typeof onComplete === 'function') {
+      onComplete();
+    }
+    return;
+  }
+
   const img = new Image();
   img.onload = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, 0, 0);
-    
-    // Redraw all annotations
+
     annotations.forEach(annotation => {
       drawAnnotation(annotation);
     });
-    
-    // Redraw crop overlay if in crop mode
-    if (isCropMode && cropSelection) {
+
+    if (settings.drawCropOverlay && isCropMode && cropSelection) {
       drawCropOverlayOnly();
     }
 
-    if (isFilterMode && filterSelection) {
+    if (settings.drawFilterOverlay && isFilterMode && filterSelection) {
       drawFilterSelectionOverlay(filterSelection, filterSelecting);
+    }
+
+    if (settings.drawSelectionOverlay && isSelectionMode && selectionRect) {
+      drawSelectionOverlay(selectionRect, selectionSelecting);
+    }
+
+    if (typeof onComplete === 'function') {
+      onComplete();
     }
   };
   img.src = screenshotDataUrl;
+}
+
+function redrawCanvasAsync(options = {}) {
+  return new Promise((resolve) => {
+    redrawCanvas(options, resolve);
+  });
 }
 
 // Undo last annotation
@@ -1395,10 +1480,13 @@ clearBtn.addEventListener('click', () => {
     isDraggingImage = false;
     isResizingImage = false;
     imageResizeHandle = null;
+    selectionRect = null;
+    selectionSelecting = false;
     if (canvas) {
       canvas.style.cursor = '';
     }
     updateFilterControlsState();
+    updateSelectionControlsState();
     redrawCanvas();
   }
 });
@@ -1433,6 +1521,18 @@ filterClearBtn.addEventListener('click', () => {
   if (canvas && screenshotDataUrl) {
     redrawCanvas();
   }
+});
+
+selectionCopyBtn.addEventListener('click', () => {
+  handleSelectionCopy().catch((error) => {
+    console.error('Copy selection failed:', error);
+  });
+});
+
+selectionCutBtn.addEventListener('click', () => {
+  handleSelectionCopy({ cut: true }).catch((error) => {
+    console.error('Cut selection failed:', error);
+  });
 });
 
 textApplyBtn.addEventListener('click', applyPendingTextAnnotation);
@@ -1500,8 +1600,16 @@ function resetEditor() {
   isResizingImage = false;
   imageResizeHandle = null;
   imageResizeStart = { x: 0, y: 0, width: 0, height: 0, mouseX: 0, mouseY: 0 };
+  isSelectionMode = false;
+  selectionRect = null;
+  selectionSelecting = false;
+  selectionCopyBtn.classList.add('hidden');
+  selectionCutBtn.classList.add('hidden');
+  selectionCopyBtn.disabled = true;
+  selectionCutBtn.disabled = true;
   exitFilterMode();
   exitTextMode();
+  redrawCanvas();
   document.querySelector('.capture-section').classList.remove('hidden');
   editorSection.classList.add('hidden');
   
@@ -1792,6 +1900,17 @@ function updateFilterControlsState() {
   filterClearBtn.disabled = !hasSelection;
 }
 
+function updateSelectionControlsState() {
+  const hasSelection = Boolean(
+    selectionRect &&
+    selectionRect.width > 2 &&
+    selectionRect.height > 2
+  );
+
+  selectionCopyBtn.disabled = !hasSelection;
+  selectionCutBtn.disabled = !hasSelection;
+}
+
 function beginFilterSelection(e) {
   if (!canvas) {
     return;
@@ -1881,6 +2000,24 @@ function drawFilterSelectionOverlay(selection, isPreview = false) {
   ctx.restore();
 }
 
+function drawSelectionOverlay(selection, isPreview = false) {
+  if (!selection || selection.width <= 0 || selection.height <= 0) {
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(76, 81, 191, 0.16)';
+  ctx.fillRect(selection.x, selection.y, selection.width, selection.height);
+
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#4c51bf';
+  ctx.setLineDash(isPreview ? [4, 3] : [6, 4]);
+  ctx.strokeRect(selection.x, selection.y, selection.width, selection.height);
+  ctx.setLineDash([]);
+
+  ctx.restore();
+}
+
 function clampToCanvas(value, isY = false) {
   if (!canvas) {
     return 0;
@@ -1896,6 +2033,274 @@ function normalizeSelection(startX, startY, endX, endY) {
   const width = Math.abs(endX - startX);
   const height = Math.abs(endY - startY);
   return { x, y, width, height };
+}
+
+function enterSelectionMode() {
+  if (isSelectionMode) {
+    updateSelectionControlsState();
+    return;
+  }
+
+  isSelectionMode = true;
+  selectionRect = null;
+  selectionSelecting = false;
+  selectionDragStart = { x: 0, y: 0 };
+  selectionCopyBtn.classList.remove('hidden');
+  selectionCutBtn.classList.remove('hidden');
+  selectionCopyBtn.disabled = true;
+  selectionCutBtn.disabled = true;
+  if (selectedImageAnnotation) {
+    clearSelectedImageAnnotation();
+  }
+  if (canvas) {
+    canvas.style.cursor = 'crosshair';
+  }
+  updateSelectionControlsState();
+  redrawCanvas();
+}
+
+function exitSelectionMode() {
+  if (!isSelectionMode && !selectionRect) {
+    return;
+  }
+
+  isSelectionMode = false;
+  selectionSelecting = false;
+  selectionRect = null;
+  selectionCopyBtn.classList.add('hidden');
+  selectionCutBtn.classList.add('hidden');
+  selectionCopyBtn.disabled = true;
+  selectionCutBtn.disabled = true;
+  if (canvas && !isCropMode && !(isFilterMode && filterSelecting) && !textInputMode) {
+    canvas.style.cursor = '';
+  }
+  redrawCanvas();
+}
+
+function beginSelectionRect(event) {
+  if (!canvas) {
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const x = clampToCanvas(event.clientX - rect.left);
+  const y = clampToCanvas(event.clientY - rect.top, true);
+
+  selectionSelecting = true;
+  selectionDragStart = { x, y };
+  selectionRect = { x, y, width: 0, height: 0 };
+
+  updateSelectionControlsState();
+  redrawCanvas();
+}
+
+function updateSelectionRect(event) {
+  if (!selectionSelecting || !canvas) {
+    return;
+  }
+
+  const rect = canvas.getBoundingClientRect();
+  const currentX = clampToCanvas(event.clientX - rect.left);
+  const currentY = clampToCanvas(event.clientY - rect.top, true);
+
+  selectionRect = normalizeSelection(
+    selectionDragStart.x,
+    selectionDragStart.y,
+    currentX,
+    currentY
+  );
+
+  updateSelectionControlsState();
+  redrawCanvas();
+}
+
+function finalizeSelectionRect(event) {
+  if (!selectionSelecting || !canvas) {
+    return;
+  }
+
+  let currentX = selectionDragStart.x;
+  let currentY = selectionDragStart.y;
+
+  if (event) {
+    const rect = canvas.getBoundingClientRect();
+    currentX = clampToCanvas(event.clientX - rect.left);
+    currentY = clampToCanvas(event.clientY - rect.top, true);
+  }
+
+  selectionRect = normalizeSelection(
+    selectionDragStart.x,
+    selectionDragStart.y,
+    currentX,
+    currentY
+  );
+
+  selectionRect.x = Math.round(selectionRect.x);
+  selectionRect.y = Math.round(selectionRect.y);
+  selectionRect.width = Math.round(selectionRect.width);
+  selectionRect.height = Math.round(selectionRect.height);
+
+  selectionSelecting = false;
+  updateSelectionControlsState();
+  redrawCanvas();
+}
+
+function clearSelectionRect() {
+  selectionRect = null;
+  selectionSelecting = false;
+  updateSelectionControlsState();
+  redrawCanvas();
+}
+
+async function handleSelectionCopy(options = {}) {
+  if (!isSelectionMode || !selectionRect) {
+    alert('Select an area first.');
+    return;
+  }
+
+  if (selectionRect.width < 1 || selectionRect.height < 1) {
+    alert('Selection too small.');
+    return;
+  }
+
+  const cut = Boolean(options.cut);
+
+  const selectionSnapshot = {
+    x: selectionRect.x,
+    y: selectionRect.y,
+    width: selectionRect.width,
+    height: selectionRect.height
+  };
+
+  selectionCopyBtn.disabled = true;
+  selectionCutBtn.disabled = true;
+
+  try {
+    const success = await copySelectionToClipboard(selectionSnapshot);
+    if (!success) {
+      alert('Could not copy the selection to the clipboard.');
+      return;
+    }
+
+    if (cut) {
+      applySelectionCut(selectionSnapshot);
+      clearSelectionRect();
+    }
+  } catch (error) {
+    console.error('Selection copy failed:', error);
+    alert('Unable to copy selection. Check clipboard permissions and try again.');
+  } finally {
+    if (isSelectionMode) {
+      updateSelectionControlsState();
+    }
+  }
+}
+
+async function copySelectionToClipboard(selection) {
+  if (!canvas || !ctx || !selection) {
+    return false;
+  }
+
+  const originX = Math.max(0, Math.min(canvas.width, Math.round(selection.x)));
+  const originY = Math.max(0, Math.min(canvas.height, Math.round(selection.y)));
+  const width = Math.max(0, Math.round(selection.width));
+  const height = Math.max(0, Math.round(selection.height));
+
+  if (width < 1 || height < 1) {
+    return false;
+  }
+
+  const clampedWidth = Math.min(width, canvas.width - originX);
+  const clampedHeight = Math.min(height, canvas.height - originY);
+
+  if (clampedWidth < 1 || clampedHeight < 1) {
+    return false;
+  }
+
+  await redrawCanvasAsync({ drawSelectionOverlay: false });
+
+  let imageData;
+  try {
+    imageData = ctx.getImageData(originX, originY, clampedWidth, clampedHeight);
+  } catch (error) {
+    await redrawCanvasAsync();
+    throw error;
+  }
+
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = clampedWidth;
+  exportCanvas.height = clampedHeight;
+  const exportCtx = exportCanvas.getContext('2d');
+  exportCtx.putImageData(imageData, 0, 0);
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+      const blob = await canvasToBlobAsync(exportCanvas, 'image/png');
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      await redrawCanvasAsync();
+      return true;
+    }
+  } catch (error) {
+    console.warn('Direct image clipboard write failed, attempting fallback.', error);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      const dataUrl = exportCanvas.toDataURL('image/png');
+      await navigator.clipboard.writeText(dataUrl);
+      await redrawCanvasAsync();
+      return true;
+    } catch (error) {
+      console.warn('Clipboard text fallback failed.', error);
+    }
+  }
+
+  await redrawCanvasAsync();
+  return false;
+}
+
+function applySelectionCut(selection) {
+  if (!selection) {
+    return;
+  }
+
+  if (!canvas) {
+    return;
+  }
+
+  const originX = Math.max(0, Math.min(canvas.width, Math.round(selection.x)));
+  const originY = Math.max(0, Math.min(canvas.height, Math.round(selection.y)));
+  const width = Math.max(0, Math.round(selection.width));
+  const height = Math.max(0, Math.round(selection.height));
+
+  const clampedWidth = Math.min(width, canvas.width - originX);
+  const clampedHeight = Math.min(height, canvas.height - originY);
+
+  if (clampedWidth < 1 || clampedHeight < 1) {
+    return;
+  }
+
+  annotations.push({
+    tool: 'erase',
+    startX: originX,
+    startY: originY,
+    endX: originX + clampedWidth,
+    endY: originY + clampedHeight
+  });
+
+  redrawCanvas();
+}
+
+function canvasToBlobAsync(sourceCanvas, mimeType = 'image/png') {
+  return new Promise((resolve, reject) => {
+    sourceCanvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error('Unable to export selection.'));
+      }
+    }, mimeType);
+  });
 }
 
 // Crop functionality
