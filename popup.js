@@ -1060,6 +1060,61 @@ function applyFilterEffect(x1, y1, x2, y2, effect = 'grayscale') {
         b = clampChannel(toned.b * (1 - blend) + blueOverlay.b * blend + 8);
         break;
       }
+      case 'moon': {
+        const gray = 0.3 * r + 0.59 * g + 0.11 * b;
+        r = clampChannel(gray * 0.92);
+        g = clampChannel(gray * 0.96);
+        b = clampChannel(gray + 18);
+        break;
+      }
+      case 'hudson': {
+        const base = rgbToHsl(r, g, b);
+        const coolHue = (base.h + 0.98) % 1;
+        const contrastL = clamp01((base.l - 0.5) * 1.25 + 0.5);
+        const boostedSat = clamp01(base.s * 1.05 + 0.02);
+        const toned = hslToRgb(coolHue, boostedSat, contrastL);
+        r = clampChannel(toned.r - 6);
+        g = clampChannel(toned.g + 4);
+        b = clampChannel(toned.b + 12);
+        break;
+      }
+      case 'perpetua': {
+        const base = rgbToHsl(r, g, b);
+        const pastelSat = clamp01(base.s * 0.85 + 0.02);
+        const liftedLight = clamp01(base.l * 1.1 + 0.05);
+        const toned = hslToRgb((base.h + 0.96) % 1, pastelSat, liftedLight);
+        const overlay = { r: 210, g: 240, b: 230 };
+        const blend = 0.2;
+        r = clampChannel(toned.r * (1 - blend) + overlay.r * blend);
+        g = clampChannel(toned.g * (1 - blend) + overlay.g * blend);
+        b = clampChannel(toned.b * (1 - blend) + overlay.b * blend + 4);
+        break;
+      }
+      case 'sutro': {
+        const base = rgbToHsl(r, g, b);
+        const deepLight = clamp01(base.l * 0.75 + 0.02);
+        const mutedSat = clamp01(base.s * 0.8 + 0.01);
+        const toned = hslToRgb((base.h + 0.02) % 1, mutedSat, deepLight);
+        const sepia = { r: 220, g: 180, b: 135 };
+        const blend = 0.18;
+        r = clampChannel(toned.r * (1 - blend) + sepia.r * blend);
+        g = clampChannel(toned.g * (1 - blend) + sepia.g * blend - 6);
+        b = clampChannel(toned.b * (1 - blend) + sepia.b * blend - 10);
+        break;
+      }
+      case 'xpro2': {
+        const contrastR = clampChannel((r - 128) * 1.4 + 128);
+        const contrastG = clampChannel((g - 128) * 1.4 + 128);
+        const contrastB = clampChannel((b - 128) * 1.4 + 128);
+        const base = rgbToHsl(contrastR, contrastG, contrastB);
+        const warmHue = (base.h + 0.01) % 1;
+        const vividSat = clamp01(base.s * 1.15 + 0.04);
+        const toned = hslToRgb(warmHue, vividSat, clamp01(base.l + 0.02));
+        r = clampChannel(toned.r + 8);
+        g = clampChannel(toned.g + 2);
+        b = clampChannel(toned.b - 4);
+        break;
+      }
       case 'juno': {
         const base = rgbToHsl(r, g, b);
         const warmHue = (base.h + 0.02) % 1;
