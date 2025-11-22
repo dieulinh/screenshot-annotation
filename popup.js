@@ -44,6 +44,7 @@ const highlightTool = document.getElementById('highlightTool');
 const markerTool = document.getElementById('markerTool');
 const filterTool = document.getElementById('filterTool');
 const selectionTool = document.getElementById('selectionTool');
+const moveTool = document.getElementById('moveTool');
 const rectangleTool = document.getElementById('rectangleTool');
 const filledRectangleTool = document.getElementById('filledRectangleTool');
 const ellipseTool = document.getElementById('ellipseTool');
@@ -120,7 +121,7 @@ function loadScreenshotToCanvas(dataUrl) {
 }
 
 // Tool selection
-[arrowTool, lineTool, headingTool, textTool, highlightTool, markerTool, filterTool, selectionTool, rectangleTool, filledRectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
+[arrowTool, lineTool, headingTool, textTool, highlightTool, markerTool, filterTool, selectionTool, moveTool, rectangleTool, filledRectangleTool, ellipseTool, blurTool, cropTool].forEach(btn => {
   btn.addEventListener('click', (e) => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -159,10 +160,10 @@ function loadScreenshotToCanvas(dataUrl) {
     const showFilterControls = currentTool === 'filter';
     filterType.classList.toggle('hidden', !showFilterControls);
 
-    const showColorPicker = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'selection';
+    const showColorPicker = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'selection' && currentTool !== 'move';
     colorPicker.classList.toggle('hidden', !showColorPicker);
 
-    const showLineWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'heading' && currentTool !== 'selection';
+    const showLineWidth = !showBlurControls && !showFilterControls && currentTool !== 'crop' && currentTool !== 'heading' && currentTool !== 'selection' && currentTool !== 'move';
     lineWidth.classList.toggle('hidden', !showLineWidth);
 
     const showHeadingControls = currentTool === 'heading';
@@ -221,7 +222,16 @@ function startDrawing(e) {
   startX = e.clientX - rect.left;
   startY = e.clientY - rect.top;
 
-  if (tryBeginImageInteraction(startX, startY)) {
+  const interactedWithImage = tryBeginImageInteraction(startX, startY);
+
+  if (currentTool === 'move') {
+    if (!interactedWithImage && selectedImageAnnotation) {
+      clearSelectedImageAnnotation();
+    }
+    return;
+  }
+
+  if (interactedWithImage) {
     return;
   }
 
