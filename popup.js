@@ -70,8 +70,15 @@ const cancelBtn = document.getElementById('cancelBtn');
 const editorSection = document.getElementById('editorSection');
 const folderNameInput = document.getElementById('folderName');
 const fileNameInput = document.getElementById('fileName');
+const fileFormatSelect = document.getElementById('fileFormat');
+const fileExtLabel = document.getElementById('fileExtLabel');
 
 document.addEventListener('paste', handlePasteFromClipboard);
+
+if (fileFormatSelect) {
+  fileFormatSelect.addEventListener('change', updateFileExtensionLabel);
+}
+updateFileExtensionLabel();
 
 // Capture screenshot
 captureBtn.addEventListener('click', () => {
@@ -1552,29 +1559,7 @@ fontFamily.addEventListener('change', () => {
 
 // Save screenshot
 saveBtn.addEventListener('click', () => {
-  const folderName = folderNameInput.value.trim() || 'screenshots';
-  const fileName = fileNameInput.value.trim() || 'screenshot';
-  
-  // Get final canvas as data URL
-  const finalDataUrl = canvas.toDataURL('image/png');
-  
-  // Create download filename with folder
-  const downloadPath = `${folderName}/${fileName}.png`;
-  
-  chrome.downloads.download({
-    url: finalDataUrl,
-    filename: downloadPath,
-    saveAs: true
-  }, (downloadId) => {
-    if (chrome.runtime.lastError) {
-      console.error(chrome.runtime.lastError);
-      alert('Error saving screenshot');
-    } else {
-      console.log('Screenshot saved with ID:', downloadId);
-      // Reset UI
-      resetEditor();
-    }
-  });
+  handleSaveClick();
 });
 
 // Cancel editing
@@ -1586,6 +1571,15 @@ cancelBtn.addEventListener('click', () => {
   }
   resetEditor();
 });
+
+function updateFileExtensionLabel() {
+  if (!fileExtLabel) {
+    return;
+  }
+
+  const format = (fileFormatSelect?.value || 'png').toLowerCase();
+  fileExtLabel.textContent = format === 'pdf' ? '.pdf' : '.png';
+}
 
 function resetEditor() {
   annotations = [];
@@ -1609,6 +1603,10 @@ function resetEditor() {
   selectionCutBtn.disabled = true;
   exitFilterMode();
   exitTextMode();
+  if (fileFormatSelect) {
+    fileFormatSelect.value = 'png';
+  }
+  updateFileExtensionLabel();
   redrawCanvas();
   document.querySelector('.capture-section').classList.remove('hidden');
   editorSection.classList.add('hidden');
@@ -1617,6 +1615,182 @@ function resetEditor() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas.style.cursor = '';
   }
+}
+
+async function handleSaveClick() {
+  if (!canvas || !ctx) {
+    alert('Capture a screenshot before saving.');
+    return;
+  }
+
+  const folderName = folderNameInput.value.trim() || 'screenshots';
+  const fileName = fileNameInput.value.trim() || 'screenshot';
+  const format = (fileFormatSelect?.value || 'png').toLowerCase();
+  const downloadPath = `${folderName}/${fileName}.${format}`;
+
+  saveBtn.disabled = true;
+
+  try {
+    const payload = await prepareDownloadPayload(format);
+    if (!payload?.url) {
+      throw new Error('Unable to prepare download data');
+    }
+
+    initiateDownload(payload.url, downloadPath, payload.revokeObjectUrl);
+  } catch (error) {
+    console.error('Error saving screenshot:', error);
+    alert('Error saving screenshot');
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+async function prepareDownloadPayload(format) {
+  const normalizedFormat = format === 'pdf' ? 'pdf' : 'png';
+  const captureType = normalizedFormat === 'pdf' ? 'image/jpeg' : 'image/png';
+  const quality = normalizedFormat === 'pdf' ? 0.95 : undefined;
+
+  const dataUrl = await captureCleanCanvas(captureType, quality);
+  if (!dataUrl) {
+    return { url: null, revokeObjectUrl: false };
+  }
+
+  if (normalizedFormat === 'pdf') {
+    const pdfBlob = buildPdfFromImage(dataUrl, canvas.width, canvas.height);
+    return {
+      url: URL.createObjectURL(pdfBlob),
+      revokeObjectUrl: true
+    };
+  }
+
+  return {
+    url: dataUrl,
+    revokeObjectUrl: false
+  };
+}
+
+async function captureCleanCanvas(type = 'image/png', quality) {
+  if (!canvas) {
+    return null;
+  }
+
+  try {
+    await redrawCanvasAsync({
+      drawCropOverlay: false,
+      drawFilterOverlay: false,
+      drawSelectionOverlay: false
+    });
+    return canvas.toDataURL(type, quality);
+  } catch (error) {
+    console.error('Unable to capture canvas:', error);
+    return null;
+  } finally {
+    redrawCanvas();
+  }
+}
+
+function initiateDownload(url, filename, revokeObjectUrl = false) {
+  chrome.downloads.download({
+    url,
+    filename,
+    saveAs: true
+  }, (downloadId) => {
+    if (chrome.runtime.lastError || !downloadId) {
+      console.error(chrome.runtime.lastError || 'Download failed');
+      alert('Error saving screenshot');
+      if (revokeObjectUrl) {
+        URL.revokeObjectURL(url);
+      }
+      return;
+    }
+
+    if (revokeObjectUrl) {
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+
+    console.log('Screenshot saved with ID:', downloadId);
+    resetEditor();
+  });
+}
+
+function buildPdfFromImage(imageDataUrl, width, height) {
+  if (!imageDataUrl?.startsWith('data:image/')) {
+    throw new Error('Invalid image data');
+  }
+
+  const base64 = imageDataUrl.split(',')[1];
+  const binary = atob(base64);
+  const imageLength = binary.length;
+  const encoder = new TextEncoder();
+  const parts = [];
+  const offsets = [0];
+  let totalLength = 0;
+
+  const pushPart = (part) => {
+    parts.push(part);
+    totalLength += part.length;
+  };
+
+  const addObject = (id, bodyParts) => {
+    offsets[id] = totalLength;
+    pushPart(encoder.encode(`${id} 0 obj\n`));
+    bodyParts.forEach(pushPart);
+    pushPart(encoder.encode('\nendobj\n'));
+  };
+
+  pushPart(encoder.encode('%PDF-1.3\n'));
+
+  addObject(1, [encoder.encode('<< /Type /Catalog /Pages 2 0 R >>')]);
+  addObject(2, [encoder.encode('<< /Type /Pages /Count 1 /Kids [3 0 R] >>')]);
+  addObject(3, [
+    encoder.encode(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources << /XObject << /Im0 4 0 R >> /ProcSet [/PDF /ImageC] >> /Contents 5 0 R >>`
+    )
+  ]);
+
+  const imageBytes = new Uint8Array(imageLength);
+  for (let i = 0; i < imageLength; i++) {
+    imageBytes[i] = binary.charCodeAt(i);
+  }
+
+  addObject(4, [
+    encoder.encode(
+      `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageLength} >>\nstream\n`
+    ),
+    imageBytes,
+    encoder.encode('\nendstream')
+  ]);
+
+  const contentStream = encoder.encode(`q ${width} 0 0 ${height} 0 0 cm /Im0 Do Q`);
+  addObject(5, [
+    encoder.encode(`<< /Length ${contentStream.length} >>\nstream\n`),
+    contentStream,
+    encoder.encode('\nendstream')
+  ]);
+
+  const xrefOffset = totalLength;
+  pushPart(encoder.encode('xref\n0 6\n0000000000 65535 f \n'));
+
+  for (let i = 1; i <= 5; i++) {
+    const offset = offsets[i] || 0;
+    const offsetStr = String(offset).padStart(10, '0');
+    pushPart(encoder.encode(`${offsetStr} 00000 n \n`));
+  }
+
+  pushPart(
+    encoder.encode(
+      `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+    )
+  );
+
+  const pdfBytes = new Uint8Array(totalLength);
+  let position = 0;
+  parts.forEach((part) => {
+    pdfBytes.set(part, position);
+    position += part.length;
+  });
+
+  return new Blob([pdfBytes], { type: 'application/pdf' });
 }
 
 function enterFilterMode() {

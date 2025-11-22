@@ -178,7 +178,14 @@
         <div class="filename-input">
           <label for="fileName">Filename:</label>
           <input type="text" id="fileName" placeholder="screenshot">
-          <span class="file-ext">.png</span>
+          <span class="file-ext" id="fileExtLabel">.png</span>
+        </div>
+        <div class="format-input">
+          <label for="fileFormat">Format:</label>
+          <select id="fileFormat">
+            <option value="png" selected>PNG (.png)</option>
+            <option value="pdf">PDF (.pdf)</option>
+          </select>
         </div>
         <div class="button-group">
           <button id="saveBtn" class="primary-btn">💾 Save</button>

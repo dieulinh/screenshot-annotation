@@ -273,7 +273,8 @@ h2 {
 }
 
 .folder-input,
-.filename-input {
+.filename-input,
+.format-input {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -281,7 +282,8 @@ h2 {
 }
 
 .folder-input label,
-.filename-input label {
+.filename-input label,
+.format-input label {
   font-weight: 600;
   color: #495057;
   min-width: 70px;
@@ -294,6 +296,17 @@ h2 {
   border: 2px solid #dee2e6;
   border-radius: 6px;
   font-size: 14px;
+  font-family: monospace;
+}
+
+.format-input select {
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid #dee2e6;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
   font-family: monospace;
 }
 
