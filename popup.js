@@ -975,6 +975,91 @@ function applyFilterEffect(x1, y1, x2, y2, effect = 'grayscale') {
         b = body.b * (1 - mix) + highlight.b * mix;
         break;
       }
+      case 'gingham': {
+        const base = rgbToHsl(r, g, b);
+        const softSat = clamp01(base.s * 0.8);
+        const liftedLight = clamp01(base.l * 1.08 + 0.02);
+        const toned = hslToRgb(base.h, softSat, liftedLight);
+        const cream = { r: 238, g: 224, b: 215 };
+        const blend = 0.2;
+        r = clampChannel(toned.r * (1 - blend) + cream.r * blend);
+        g = clampChannel(toned.g * (1 - blend) + cream.g * blend);
+        b = clampChannel(toned.b * (1 - blend) + cream.b * blend);
+        break;
+      }
+      case 'reyes': {
+        const base = rgbToHsl(r, g, b);
+        const warmHue = (base.h + 0.01) % 1;
+        const pastelSat = clamp01(base.s * 0.85 + 0.03);
+        const airyLight = clamp01(base.l * 1.12 + 0.05);
+        const warmed = hslToRgb(warmHue, pastelSat, airyLight);
+        const highlight = { r: 255, g: 244, b: 228 };
+        r = clampChannel((warmed.r + highlight.r) / 2);
+        g = clampChannel((warmed.g + highlight.g) / 2 + 3);
+        b = clampChannel((warmed.b + highlight.b) / 2 - 4);
+        break;
+      }
+      case 'slumber': {
+        const base = rgbToHsl(r, g, b);
+        const mutedSat = clamp01(base.s * 0.7 + 0.02);
+        const shadowLift = clamp01((base.l - 0.5) * 0.85 + 0.55);
+        const toned = hslToRgb((base.h + 0.98) % 1, mutedSat, shadowLift);
+        const haze = { r: 224, g: 210, b: 196 };
+        const blend = 0.25;
+        r = clampChannel(toned.r * (1 - blend) + haze.r * blend + 4);
+        g = clampChannel(toned.g * (1 - blend) + haze.g * blend + 2);
+        b = clampChannel(toned.b * (1 - blend) + haze.b * blend - 6);
+        break;
+      }
+      case 'crema': {
+        const base = rgbToHsl(r, g, b);
+        const softSat = clamp01(base.s * 0.75 + 0.02);
+        const warmLight = clamp01(base.l * 1.08 + 0.04);
+        const toned = hslToRgb((base.h + 0.015) % 1, softSat, warmLight);
+        const cream = { r: 250, g: 239, b: 224 };
+        const blend = 0.18;
+        r = clampChannel(toned.r * (1 - blend) + cream.r * blend);
+        g = clampChannel(toned.g * (1 - blend) + cream.g * blend);
+        b = clampChannel(toned.b * (1 - blend) + cream.b * blend);
+        break;
+      }
+      case 'aden': {
+        const base = rgbToHsl(r, g, b);
+        const coolHue = (base.h + 0.97) % 1;
+        const pastelSat = clamp01(base.s * 0.7 + 0.03);
+        const liftedLight = clamp01(base.l * 1.05 + 0.05);
+        const toned = hslToRgb(coolHue, pastelSat, liftedLight);
+        const tealOverlay = { r: 210, g: 240, b: 235 };
+        const blend = 0.2;
+        r = clampChannel(toned.r * (1 - blend) + tealOverlay.r * blend);
+        g = clampChannel(toned.g * (1 - blend) + tealOverlay.g * blend);
+        b = clampChannel(toned.b * (1 - blend) + tealOverlay.b * blend);
+        break;
+      }
+      case 'valencia': {
+        const base = rgbToHsl(r, g, b);
+        const warmHue = (base.h + 0.02) % 1;
+        const brightLight = clamp01(base.l * 1.1 + 0.02);
+        const gentleSat = clamp01(base.s * 0.9 + 0.02);
+        const warmed = hslToRgb(warmHue, gentleSat, brightLight);
+        r = clampChannel(warmed.r + 10);
+        g = clampChannel(warmed.g + 5);
+        b = clampChannel(warmed.b - 4);
+        break;
+      }
+      case 'walden': {
+        const base = rgbToHsl(r, g, b);
+        const coolHue = (base.h + 0.96) % 1;
+        const fadedSat = clamp01(base.s * 0.8 + 0.02);
+        const liftedLight = clamp01(base.l * 1.12 + 0.03);
+        const toned = hslToRgb(coolHue, fadedSat, liftedLight);
+        const blueOverlay = { r: 210, g: 230, b: 255 };
+        const blend = 0.25;
+        r = clampChannel(toned.r * (1 - blend) + blueOverlay.r * blend);
+        g = clampChannel(toned.g * (1 - blend) + blueOverlay.g * blend + 4);
+        b = clampChannel(toned.b * (1 - blend) + blueOverlay.b * blend + 8);
+        break;
+      }
       case 'juno': {
         const base = rgbToHsl(r, g, b);
         const warmHue = (base.h + 0.02) % 1;
