@@ -975,6 +975,74 @@ function applyFilterEffect(x1, y1, x2, y2, effect = 'grayscale') {
         b = body.b * (1 - mix) + highlight.b * mix;
         break;
       }
+      case 'juno': {
+        const base = rgbToHsl(r, g, b);
+        const warmHue = (base.h + 0.02) % 1;
+        const liftedLight = clamp01((base.l - 0.5) * 1.05 + 0.55);
+        const boostedSat = clamp01(base.s * 1.2 + 0.04);
+        const warmed = hslToRgb(warmHue, boostedSat, liftedLight);
+        const mix = 0.65;
+        r = clampChannel(r * (1 - mix) + warmed.r * mix + 6);
+        g = clampChannel(g * (1 - mix) + warmed.g * mix + 2);
+        b = clampChannel(b * (1 - mix) + warmed.b * mix - 6);
+        break;
+      }
+      case 'lark': {
+        const base = rgbToHsl(r, g, b);
+        const coolerHue = (base.h + 0.97) % 1;
+        const softenedSat = clamp01(base.s * 0.9 + 0.02);
+        const liftedLight = clamp01(base.l * 1.08 + 0.04);
+        const airy = hslToRgb(coolerHue, softenedSat, liftedLight);
+        const highlight = hslToRgb((base.h + 0.02) % 1, clamp01(base.s * 1.05 + 0.03), clamp01(base.l * 1.1 + 0.02));
+        r = clampChannel((airy.r * 0.7 + highlight.r * 0.3));
+        g = clampChannel((airy.g * 0.7 + highlight.g * 0.3) + 4);
+        b = clampChannel((airy.b * 0.7 + highlight.b * 0.3) + 6);
+        break;
+      }
+      case 'ludwig': {
+        const base = rgbToHsl(r, g, b);
+        const mutedSat = clamp01(base.s * 0.78);
+        const strongLight = clamp01((base.l - 0.5) * 1.2 + 0.55);
+        const toned = hslToRgb(base.h, mutedSat, strongLight);
+        r = clampChannel(toned.r + 8);
+        g = clampChannel(toned.g + 4);
+        b = clampChannel(toned.b - 6);
+        break;
+      }
+      case 'lofi': {
+        const contrastedR = clampChannel((r - 128) * 1.35 + 128);
+        const contrastedG = clampChannel((g - 128) * 1.35 + 128);
+        const contrastedB = clampChannel((b - 128) * 1.35 + 128);
+        const boosted = rgbToHsl(contrastedR, contrastedG, contrastedB);
+        const vivid = hslToRgb(boosted.h, clamp01(boosted.s * 1.25 + 0.05), clamp01(boosted.l * 0.95));
+        r = clampChannel(vivid.r + 6);
+        g = clampChannel(vivid.g + 3);
+        b = clampChannel(vivid.b - 3);
+        break;
+      }
+      case 'hefe': {
+        const base = rgbToHsl(r, g, b);
+        const warmHue = (base.h + 0.01) % 1;
+        const deepLight = clamp01((base.l - 0.5) * 1.25 + 0.48);
+        const richSat = clamp01(base.s * 1.15 + 0.05);
+        const toned = hslToRgb(warmHue, richSat, deepLight);
+        r = clampChannel(toned.r + 10);
+        g = clampChannel(toned.g + 4);
+        b = clampChannel(toned.b - 6);
+        break;
+      }
+      case 'nashville': {
+        const base = rgbToHsl(r, g, b);
+        const fadedLight = clamp01(0.1 + base.l * 0.85);
+        const pastelSat = clamp01(base.s * 0.75 + 0.02);
+        const pastel = hslToRgb(base.h, pastelSat, fadedLight);
+        const pinkOverlay = { r: 255, g: 220, b: 233 };
+        const blend = 0.25;
+        r = clampChannel(pastel.r * (1 - blend) + pinkOverlay.r * blend);
+        g = clampChannel(pastel.g * (1 - blend) + pinkOverlay.g * blend);
+        b = clampChannel(pastel.b * (1 - blend) + pinkOverlay.b * blend);
+        break;
+      }
       case 'moodyShadows': {
         const baseHsl = rgbToHsl(r, g, b);
         const cooledHue = (baseHsl.h + 0.95) % 1;
